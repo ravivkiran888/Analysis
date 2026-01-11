@@ -5,8 +5,6 @@ import java.math.RoundingMode;
 
 import org.springframework.stereotype.Component;
 
-import com.analysis.services.ScripCache;
-import com.analysis.services.VWAPService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -64,7 +62,7 @@ public class VWAPCalculator {
 
         String symbol = scripCache.getSymbol(scripCode);
 
-        vwapService.saveOrUpdate(
+        vwapService.saveOrUpdateVWAP(
                 scripCode,
                 symbol,
                 vwap

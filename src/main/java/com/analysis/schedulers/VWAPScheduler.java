@@ -3,67 +3,54 @@ package com.analysis.schedulers;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.analysis.helpers.VWAPApiBuilder;
 import com.analysis.requests.VWAPRequest;
 import com.analysis.services.ScripCache;
+import com.analysis.services.VWAPService;
 import com.analysis.util.VWAPAPIExecutor;
-
-import jakarta.annotation.PostConstruct;
 
 @Component
 public class VWAPScheduler {
 
+    private final ScripCache scripCache;
+    private final VWAPService vwapService;
+    private final VWAPAPIExecutor	 vwapaAPIExecutor;
 
-	private final ScripCache scripCache;
-	 private final VWAPAPIExecutor vwapaAPIExecutor;
+    public VWAPScheduler(
+            ScripCache scripCache,
+            VWAPService vwapService,
+            VWAPAPIExecutor vwapaAPIExecutor) {
+        this.scripCache = scripCache;
+        this.vwapService = vwapService;
+        this.vwapaAPIExecutor = vwapaAPIExecutor;
+    }
+    
+    @Scheduled(cron = "0 */1 * * * *")
+    public void startVWAPJob() {
+        runVWAPJob();
+    }
 
-	
-	
-	
-	 public VWAPScheduler(
-	            ScripCache scripCache,
-	            VWAPAPIExecutor vwapaAPIExecutor) {
-	        this.scripCache = scripCache;
-	        this.vwapaAPIExecutor = vwapaAPIExecutor;
-	        
-	        vwapScheduler() ;
-	    }
-	
-	  //  @Scheduled(cron = "0 */3 * * * *")
+    public void runVWAPJob() {
 
-	/*
-	 @SchedulerLock(
-	    name = APPConstants.VWAP_SCHEDULER,
-	    lockAtMostFor = APPConstants.LOCK_FOR_IN_MINS
-	)
-	*/
-	 
-	 @PostConstruct
-	    public void init() {
-	        vwapScheduler();
-	    }
+        vwapService.deleteAllVWAP();
 
-	 
-	public void vwapScheduler() {
-	    runMarketJob();
-	}
+        /*
+        List<Integer> scripCodes =
+                new ArrayList<>(scripCache.getAllScripCodes());
+        */
 
-	
-	    private void runMarketJob() {
+        List<Integer> scripCodes = new ArrayList<>();
+        scripCodes.add(20481);
+        scripCodes.add(24582);
+        scripCodes.add(7);
 
-	        List<Integer> scripCodes =
-	                new ArrayList<>(scripCache.getAllScripCodes());
+        List<VWAPRequest> requests =
+                VWAPApiBuilder.buildRequests(scripCodes);
 
-	        List<VWAPRequest> requests =
-	                VWAPApiBuilder.buildRequests(scripCodes);
-
-	        vwapaAPIExecutor.executeInBatches(requests, 50);
-	    }
-
-
-
-
-	    
+        // 🔵 Executes API calls in batches
+        vwapaAPIExecutor.executeInBatches(requests, 50);
+    }
 }
