@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration
 @EnableScheduling
-@EnableSchedulerLock(defaultLockAtMostFor = APPConstants.LOCK_FOR_IN_MINS)
+@EnableSchedulerLock(defaultLockAtMostFor = "50s")
 public class SchedulerConfig {
 
     @Bean
