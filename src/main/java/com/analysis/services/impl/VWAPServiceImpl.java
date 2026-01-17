@@ -31,8 +31,8 @@ public class VWAPServiceImpl implements VWAPService {
      * Deletes ALL VWAP values once per job
      */
     @Override
-    public void deleteAllVWAP() {
-        repository.deleteAll();
+    public void deleteEntryInVWAP(int scriptCode) {
+    	repository.deleteByScripCode(scriptCode);
     }
 
     @Override

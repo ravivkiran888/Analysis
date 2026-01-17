@@ -80,7 +80,7 @@ public class VWAPAPIExecutor {
     
     private void callApi(VWAPRequest request) {
 
-    	String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NjgxMDgwMzcsImV4cCI6MTc2ODE1NjE5OSwiaWF0IjoxNzY4MTA4MDM3fQ.8KMX4Qvtz9cjutp5EziHNkCcrq2uxWEnInsFq64hmvQ";
+    	String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3Njg2NTM1NDcsImV4cCI6MTc2ODY3NDU5OSwiaWF0IjoxNzY4NjUzNTQ3fQ.aewpztoXNTHaoeYD-5-kUrI-x-J6eFE-842RlkdArCg";
         
     	System.out.println(request.getUrl());
     	

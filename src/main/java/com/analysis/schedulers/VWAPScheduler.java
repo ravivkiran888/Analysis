@@ -18,6 +18,8 @@ public class VWAPScheduler {
     private final ScripCache scripCache;
     private final VWAPService vwapService;
     private final VWAPAPIExecutor	 vwapaAPIExecutor;
+    
+    
 
     public VWAPScheduler(
             ScripCache scripCache,
@@ -26,26 +28,24 @@ public class VWAPScheduler {
         this.scripCache = scripCache;
         this.vwapService = vwapService;
         this.vwapaAPIExecutor = vwapaAPIExecutor;
-    }
+     }
     
-    @Scheduled(cron = "0 */1 * * * *")
+    @Scheduled(cron = "0 */5 * * * *")
     public void startVWAPJob() {
         runVWAPJob();
     }
 
     public void runVWAPJob() {
 
-        vwapService.deleteAllVWAP();
-
+    	
         /*
         List<Integer> scripCodes =
                 new ArrayList<>(scripCache.getAllScripCodes());
         */
 
         List<Integer> scripCodes = new ArrayList<>();
-        scripCodes.add(20481);
-        scripCodes.add(24582);
-        scripCodes.add(7);
+         scripCodes.add(11184);
+       // scripCodes.add(7);
 
         List<VWAPRequest> requests =
                 VWAPApiBuilder.buildRequests(scripCodes);

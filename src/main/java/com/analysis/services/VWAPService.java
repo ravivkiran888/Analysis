@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 
 public interface VWAPService {
 
-    void deleteAllVWAP();
+    void deleteEntryInVWAP(int scripCode);
 
     void saveOrUpdateVWAP(
             int scripCode,
