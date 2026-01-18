@@ -22,5 +22,9 @@ public class APPConstants {
 	public static final String VWAP_VALUES_COLLECTION = "vwap_values";
 
 	public static final String RSI_VALUES_COLLECTION = "rsi_values";
-	
+
+	public static final String SCRIPT_CODE = "ScripCode";
+	public static final String SYMBOL = "Symbol";
+
+
 }

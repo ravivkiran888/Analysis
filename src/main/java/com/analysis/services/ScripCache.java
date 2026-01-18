@@ -8,11 +8,6 @@ import org.springframework.stereotype.Service;
 
 import com.analysis.repository.ScripMasterRepository;
 
-import lombok.Getter;
-import lombok.Setter;
-
-@Setter
-@Getter
 @Service
 public class ScripCache {
 
@@ -33,5 +28,9 @@ public class ScripCache {
 
     public Set<Integer> getAllScripCodes() {
         return scripMap.keySet();
+    }
+
+    public Set<Map.Entry<Integer, String>> getAllScripEntries() {
+        return scripMap.entrySet();
     }
 }

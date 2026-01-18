@@ -1,10 +1,8 @@
 package com.analysis.schedulers;
 
 import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
 
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.analysis.helpers.FivePaisaApiClient;
@@ -28,23 +26,30 @@ public class EMAScheduler {
         this.emaService = emaService;
     }
 
-    @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
+  //  @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
+    
     public void run() throws Exception {
 
         String from = LocalDate.now().minusDays(10).toString();
         String to   = LocalDate.now().minusDays(1).toString();
 
-        Set<Integer> allScripts =
-                new HashSet<>(scripCache.getAllScripCodes());
+        for (Map.Entry<Integer, String> entry
+                : scripCache.getAllScripEntries()) {
 
-        for (int scripCode : allScripts) {
-
+            int scripCode = entry.getKey();
+            String symbol = entry.getValue();
+            
+                     
             String json =
                     executor.fetch30MinCandles(scripCode, from, to);
 
-            emaService.processApiResponse(scripCode, json);
+            emaService.processApiResponse(String.valueOf(scripCode) , symbol , json);
 
-            Thread.sleep(120); // rate-limit safety
+           
+
+            Thread.sleep(60);
         }
     }
+
+    
 }

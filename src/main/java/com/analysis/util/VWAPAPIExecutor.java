@@ -58,11 +58,7 @@ public class VWAPAPIExecutor {
         for (int i = 0; i < batches.size(); i++) {
 
             List<VWAPRequest> batch = batches.get(i);
-            System.out.println(
-                "Starting batch " + (i + 1)
-                + "/" + batches.size()
-                + " | size=" + batch.size()
-            );
+            
 
             for (VWAPRequest request : batch) {
                 rateLimiter.acquire();
@@ -87,7 +83,6 @@ public class VWAPAPIExecutor {
     private void callApi(VWAPRequest request) {
 
     	
-    	System.out.println(request.getUrl());
     	
         try {
             String response =
