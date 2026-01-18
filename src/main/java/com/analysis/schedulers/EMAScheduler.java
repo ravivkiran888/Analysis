@@ -28,21 +28,23 @@ public class EMAScheduler {
         this.emaService = emaService;
     }
 
-    @Scheduled(cron = "0 20 * * * MON-FRI")
+    @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
     public void run() throws Exception {
 
-        String from = LocalDate.now().minusDays(14).toString();
-        String to   = LocalDate.now().toString();
+        String from = LocalDate.now().minusDays(10).toString();
+        String to   = LocalDate.now().minusDays(1).toString();
 
-        Set<Integer> allScripts = Set.of(11184);
-        // scripCache.getAllScripCodes();
+        Set<Integer> allScripts =
+                new HashSet<>(scripCache.getAllScripCodes());
 
         for (int scripCode : allScripts) {
 
-            String json = executor.fetch60MinCandles(scripCode, from, to);
+            String json =
+                    executor.fetch30MinCandles(scripCode, from, to);
+
             emaService.processApiResponse(scripCode, json);
 
-            Thread.sleep(120); // safe rate-limit buffer
+            Thread.sleep(120); // rate-limit safety
         }
     }
 }

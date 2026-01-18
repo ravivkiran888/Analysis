@@ -18,8 +18,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class EMAService {
 
-    private static final String INTERVAL = "60m";
-    private static final String COLLECTION = "ema_60m";
+    private static final String INTERVAL = "30m";
+    private static final String COLLECTION = "ema_30m";
 
     private final MongoTemplate mongoTemplate;
     private final ObjectMapper objectMapper;

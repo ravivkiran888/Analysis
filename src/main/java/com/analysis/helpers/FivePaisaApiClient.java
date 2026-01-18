@@ -22,13 +22,13 @@ public class FivePaisaApiClient {
         this.restTemplate = builder.build();
     }
 
-    public String fetch60MinCandles(
+    public String fetch30MinCandles(
             int scripCode,
             String fromDate,
             String toDate) {
 
         String url = String.format(
-                "https://openapi.5paisa.com/V2/historical/N/C/%d/60m?from=%s&end=%s",
+                "https://openapi.5paisa.com/V2/historical/N/C/%d/30m?from=%s&end=%s",
                 scripCode,
                 fromDate,
                 toDate
