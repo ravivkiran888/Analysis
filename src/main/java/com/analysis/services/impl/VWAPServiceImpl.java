@@ -39,7 +39,9 @@ public class VWAPServiceImpl implements VWAPService {
     public void saveOrUpdateVWAP(
             int scripCode,
             String symbol,
-            BigDecimal vwap) {
+            BigDecimal vwap,
+            BigDecimal close
+    		) {
 
         Query query = new Query(
                 Criteria.where("symbol").is(symbol)
@@ -49,6 +51,7 @@ public class VWAPServiceImpl implements VWAPService {
                 .set("scripCode", scripCode)
                 .set("symbol", symbol)
                 .set("vwap", vwap)
+                .set("close", close)
                 .set("updatedAt", Instant.now());
 
         mongoTemplate.upsert(

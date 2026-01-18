@@ -9,6 +9,7 @@ public interface VWAPService {
     void saveOrUpdateVWAP(
             int scripCode,
             String symbol,
-            BigDecimal vwap
+            BigDecimal vwap,
+            BigDecimal close
     );
 }

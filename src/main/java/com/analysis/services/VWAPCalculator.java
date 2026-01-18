@@ -51,6 +51,9 @@ public class VWAPCalculator {
         if (candles == null || candles.isEmpty()) {
             return;
         }
+        
+        BigDecimal lastClose = null;
+
 
         BigDecimal cumulativeTPV = BigDecimal.ZERO;
         BigDecimal cumulativeVolume = BigDecimal.ZERO;
@@ -69,6 +72,9 @@ public class VWAPCalculator {
             BigDecimal low    = c.get(3).decimalValue();
             BigDecimal close  = c.get(4).decimalValue();
             BigDecimal volume = c.get(5).decimalValue();
+            
+            lastClose = close; 
+
 
             BigDecimal typicalPrice =
                     high.add(low).add(close)
@@ -101,7 +107,8 @@ public class VWAPCalculator {
             vwapService.saveOrUpdateVWAP(
                     scripCode,
                     symbol,
-                    vwap
+                    vwap,
+                    lastClose
             );
         }
 

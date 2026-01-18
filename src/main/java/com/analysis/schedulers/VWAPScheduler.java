@@ -47,6 +47,8 @@ public class VWAPScheduler {
 
             int scripCode = entry.getKey();
             String symbol = entry.getValue();
+            
+            System.out.println(symbol);
 
             try {
                 log.debug("Processing VWAP | {} ({})", symbol, scripCode);
