@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -15,6 +16,11 @@ import com.google.common.util.concurrent.RateLimiter;
 @Component
 public class VWAPAPIExecutor {
 
+	
+	  @Value("${fivepaisa.access.token}")
+	  private String accessToken;
+
+	  
     private static final int MAX_RPS = 24;
 
     private final RateLimiter rateLimiter =
@@ -80,8 +86,7 @@ public class VWAPAPIExecutor {
     
     private void callApi(VWAPRequest request) {
 
-    	String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3Njg2NTM1NDcsImV4cCI6MTc2ODY3NDU5OSwiaWF0IjoxNzY4NjUzNTQ3fQ.aewpztoXNTHaoeYD-5-kUrI-x-J6eFE-842RlkdArCg";
-        
+    	
     	System.out.println(request.getUrl());
     	
         try {
