@@ -16,5 +16,5 @@ public interface RSIValueRepository
     
     
     void deleteByScripCode(
-            int scripCode);
+            String scripCode);
 }

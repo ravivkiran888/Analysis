@@ -27,8 +27,8 @@ public class BhavcopyRunner implements CommandLineRunner {
 
         try {
             // Run once at application startup if needed
-           //  emaScheduler.run();
-             vwapScheduler.runVWAPJob();
+        //     emaScheduler.run();
+         //    vwapScheduler.runVWAPJob();
 
         } catch (Exception e) {
             e.printStackTrace();

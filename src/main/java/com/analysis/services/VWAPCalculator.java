@@ -53,6 +53,7 @@ public class VWAPCalculator {
         }
         
         BigDecimal lastClose = null;
+        BigDecimal totalTradedVolume = null;
 
 
         BigDecimal cumulativeTPV = BigDecimal.ZERO;
@@ -74,6 +75,7 @@ public class VWAPCalculator {
             BigDecimal volume = c.get(5).decimalValue();
             
             lastClose = close; 
+            totalTradedVolume = volume;
 
 
             BigDecimal typicalPrice =
@@ -102,19 +104,20 @@ public class VWAPCalculator {
                             RoundingMode.HALF_UP);
 
             
-            vwapService.deleteEntryInVWAP(scripCode);
+            vwapService.deleteEntryInVWAP(String.valueOf(scripCode));
             
             vwapService.saveOrUpdateVWAP(
-                    scripCode,
+                    String.valueOf(scripCode),
                     symbol,
                     vwap,
-                    lastClose
+                    lastClose,
+                    totalTradedVolume
             );
         }
 
         // ---- RSI (TradingView-style) ----
         rsiService.calculateAndSaveRSI(
-                scripCode,
+        		String.valueOf(scripCode),
                 symbol,
                 candles
         );

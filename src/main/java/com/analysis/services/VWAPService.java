@@ -4,12 +4,13 @@ import java.math.BigDecimal;
 
 public interface VWAPService {
 
-    void deleteEntryInVWAP(int scripCode);
+    void deleteEntryInVWAP(String scripCode);
 
     void saveOrUpdateVWAP(
-            int scripCode,
+            String scripCode,
             String symbol,
             BigDecimal vwap,
-            BigDecimal close
+            BigDecimal close,
+            BigDecimal volume
     );
 }

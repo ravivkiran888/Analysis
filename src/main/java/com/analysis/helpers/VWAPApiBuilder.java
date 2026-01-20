@@ -38,6 +38,8 @@ public class VWAPApiBuilder {
             date
         );
 
+        System.out.println(url);
+        
         return new VWAPRequest(scripCode, url);
     }
 }

@@ -31,27 +31,29 @@ public class VWAPServiceImpl implements VWAPService {
      * Deletes ALL VWAP values once per job
      */
     @Override
-    public void deleteEntryInVWAP(int scriptCode) {
+    public void deleteEntryInVWAP(String scriptCode) {
     	repository.deleteByScripCode(scriptCode);
     }
 
     @Override
     public void saveOrUpdateVWAP(
-            int scripCode,
+    		String scripCode,
             String symbol,
             BigDecimal vwap,
-            BigDecimal close
+            BigDecimal close,
+            BigDecimal volume
     		) {
 
         Query query = new Query(
-                Criteria.where("symbol").is(symbol)
+                Criteria.where(APPConstants.SYMBOL).is(symbol)
         );
 
         Update update = new Update()
-                .set("scripCode", scripCode)
-                .set("symbol", symbol)
+                .set(APPConstants.SCRIPT_CODE, scripCode)
+                .set(APPConstants.SYMBOL, symbol)
                 .set("vwap", vwap)
                 .set("close", close)
+                .set("volume", volume)
                 .set("updatedAt", Instant.now());
 
         mongoTemplate.upsert(

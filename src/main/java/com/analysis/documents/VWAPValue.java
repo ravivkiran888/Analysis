@@ -1,12 +1,12 @@
 package com.analysis.documents;
 
-
 import java.math.BigDecimal;
 import java.time.Instant;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 import com.analysis.APPConstants;
 
@@ -21,14 +21,15 @@ public class VWAPValue {
     @Id
     private String id;
 
-    private int scripCode;
+    
+    @Field("ScripCode")
+    private String scripCode;
 
-    @Indexed(unique = true)
+    @Indexed
+    @Field("Symbol")
     private String symbol;
 
     private BigDecimal vwap;
 
     private Instant updatedAt;
-
-
 }

@@ -7,6 +7,6 @@ import com.analysis.documents.VWAPValue;
 public interface VWAPValueRepository
         extends MongoRepository<VWAPValue, String> {
 	
-    void deleteByScripCode(int scripCode);
+    void deleteByScripCode(String scripCode);
 
 }

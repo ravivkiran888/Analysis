@@ -25,7 +25,7 @@ public class RSIServiceImpl {
      * Calculated ONLY from candle response
      */
     public void calculateAndSaveRSI(
-            int scripCode,
+            String scripCode,
             String symbol,
             JsonNode candles) {
 
