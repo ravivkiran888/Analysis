@@ -26,29 +26,30 @@ public class EMAScheduler {
         this.emaService = emaService;
     }
 
-  //  @Scheduled(cron = "0 45 8 * * MON-FRI", zone = "Asia/Kolkata")
-    
+   // @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
+
     public void run() throws Exception {
 
         String from = LocalDate.now().minusDays(10).toString();
         String to   = LocalDate.now().minusDays(1).toString();
 
-        for (Map.Entry<Integer, String> entry
-                : scripCache.getAllScripEntries()) {
+        for (Map.Entry<Integer, String> entry : scripCache.getAllScripEntries()) {
 
             int scripCode = entry.getKey();
             String symbol = entry.getValue();
-            
-                     
+
+            System.out.println(symbol);
+
             String json =
                     executor.fetch30MinCandles(scripCode, from, to);
 
-            emaService.processApiResponse(String.valueOf(scripCode) , symbol , json);
-
-           
-
-            Thread.sleep(60);
+            emaService.processApiResponse(
+                    String.valueOf(scripCode),
+                    symbol,
+                    json
+            );
         }
+
     }
 
     

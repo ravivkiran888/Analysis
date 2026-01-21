@@ -1,87 +1,65 @@
 package com.analysis.util;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import com.analysis.APPConstants;
+import com.analysis.exceptionm.TooManyRequestsException;
 import com.analysis.requests.VWAPRequest;
 import com.analysis.services.VWAPCalculator;
-import com.google.common.util.concurrent.RateLimiter;
 
 @Component
 public class VWAPAPIExecutor {
 
-	
 	  @Value("${fivepaisa.access.token}")
 	  private String accessToken;
 
-	  
-    private static final int MAX_RPS = 24;
-
-    private final RateLimiter rateLimiter =
-            RateLimiter.create(MAX_RPS);
-
+	
+    private static final Logger log =
+            LoggerFactory.getLogger(VWAPAPIExecutor.class);
 
     private final WebClient webClient;
     private final VWAPCalculator vwapCalculator;
 
-    public VWAPAPIExecutor(WebClient fivePaisaWebClient,
-                           VWAPCalculator vwapCalculator) {
-        this.webClient = fivePaisaWebClient;
+    public VWAPAPIExecutor(
+            WebClient webClient,
+            VWAPCalculator vwapCalculator) {
+
+        this.webClient = webClient;
         this.vwapCalculator = vwapCalculator;
     }
-    
-    private <T> List<List<T>> partition(List<T> list, int size) {
-        List<List<T>> result = new ArrayList<>();
-        for (int i = 0; i < list.size(); i += size) {
-            result.add(list.subList(
-                    i,
-                    Math.min(i + size, list.size())
-            ));
-        }
-        return result;
-    }
 
+    public void execute(List<VWAPRequest> requests) {
 
-    public void executeInBatches(
-            List<VWAPRequest> requests,
-            int batchSize
-    ) {
+        for (VWAPRequest request : requests) {
 
-        List<List<VWAPRequest>> batches = partition(requests, batchSize);
+            // GLOBAL rate control
+            APPConstants.RATE_LIMITER.acquire();
 
-        for (int i = 0; i < batches.size(); i++) {
-
-            List<VWAPRequest> batch = batches.get(i);
-            
-
-            for (VWAPRequest request : batch) {
-                rateLimiter.acquire();
-                callApi(request);
-            }
-
-            // sleep once after the batch
             try {
-				Thread.sleep(120);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+                callApi(request);
 
-            // Optional cooling period
-            
+            } catch (Exception ex) {
+                log.error(
+                    "VWAP API failed | scrip={}",
+                    request.getScripCode(),
+                    ex
+                );
+            }
         }
     }
 
-    // 
-    
     private void callApi(VWAPRequest request) {
 
+    	
     	
     	
         try {
@@ -90,26 +68,27 @@ public class VWAPAPIExecutor {
                             .uri(request.getUrl())
                             .headers(h -> {
                                 h.setBearerAuth(accessToken);
-                                h.setContentType(MediaType.APPLICATION_JSON);
+                                h.setContentType(
+                                        MediaType.APPLICATION_JSON);
                             })
                             .retrieve()
                             .bodyToMono(String.class)
                             .timeout(Duration.ofSeconds(10))
                             .block();
 
-            vwapCalculator.calculateFromApiResponse(
-                    request.getScripCode(),
-                    response
-            );
+            try {
+				vwapCalculator.calculateFromApiResponse(
+				        request.getScripCode(),
+				        response
+				);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 
-        } catch (Exception ex) {
-            System.err.println(
-                "API failed for ScripCode=" + request.getScripCode()
-                + " | " + ex.getMessage()
-            );
+        } catch (WebClientResponseException.TooManyRequests ex) {
+        	throw new TooManyRequestsException();
         }
     }
 
-    
-    
-    }
+}

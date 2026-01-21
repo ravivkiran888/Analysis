@@ -4,7 +4,6 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.analysis.helpers.VWAPApiBuilder;
@@ -19,47 +18,43 @@ import lombok.extern.slf4j.Slf4j;
 public class VWAPScheduler {
 
     private final ScripCache scripCache;
-    private final VWAPAPIExecutor vwapaAPIExecutor;
+    private final VWAPAPIExecutor vwapApiExecutor;
 
     public VWAPScheduler(
             ScripCache scripCache,
-            VWAPAPIExecutor vwapaAPIExecutor
-    ) {
+            VWAPAPIExecutor vwapApiExecutor) {
+
         this.scripCache = scripCache;
-        this.vwapaAPIExecutor = vwapaAPIExecutor;
+        this.vwapApiExecutor = vwapApiExecutor;
     }
 
-    /**
-     * Runs every 5 minutes during market hours
-     * 9:15 AM – 3:30 PM (MON–FRI)
-     */
-    @Scheduled(
-        cron = "0 */5 9-15 * * MON-FRI",
-        zone = "Asia/Kolkata"
-    )
+    
+    
+    // @Scheduled(cron = "0 */5 9-15 * * MON-FRI",zone = "Asia/Kolkata")
     public void runVWAPJob() {
 
-        LocalTime now = LocalTime.now();
-        log.info("VWAP Scheduler started at {}", now);
+        log.info(
+            "VWAP Scheduler started at {}",
+            LocalTime.now()
+        );
 
         for (Map.Entry<Integer, String> entry :
                 scripCache.getAllScripEntries()) {
 
             int scripCode = entry.getKey();
             String symbol = entry.getValue();
-            
-            System.out.println(symbol);
+
+            log.info(
+                "Starting VWAP | {} ({})",
+                symbol,
+                scripCode
+            );
 
             try {
-                log.debug("Processing VWAP | {} ({})", symbol, scripCode);
-
                 List<VWAPRequest> requests =
                         VWAPApiBuilder.buildRequests(scripCode);
 
-                vwapaAPIExecutor.executeInBatches(requests, 50);
-
-                // API rate-limit safety
-                Thread.sleep(60);
+                vwapApiExecutor.execute(requests);
 
             } catch (Exception ex) {
                 log.error(

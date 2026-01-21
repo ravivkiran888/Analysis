@@ -1,5 +1,7 @@
 package com.analysis;
 
+import com.google.common.util.concurrent.RateLimiter;
+
 public class APPConstants {
 
 	public static final String DB_NAME = "test";
@@ -25,6 +27,9 @@ public class APPConstants {
 
 	public static final String SCRIPT_CODE = "ScripCode";
 	public static final String SYMBOL = "Symbol";
+
+	public static final RateLimiter RATE_LIMITER =
+	        RateLimiter.create(0.33); // 1 request per 3 seconds
 
 
 }
