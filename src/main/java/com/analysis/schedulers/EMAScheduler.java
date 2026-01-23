@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 
 import com.analysis.helpers.FivePaisaApiClient;
 import com.analysis.services.EMAService;
@@ -28,7 +29,7 @@ public class EMAScheduler {
 
    // @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
 
-    public void run() throws Exception {
+    public void run() {
 
         String from = LocalDate.now().minusDays(10).toString();
         String to   = LocalDate.now().minusDays(1).toString();
@@ -40,16 +41,31 @@ public class EMAScheduler {
 
             System.out.println(symbol);
 
-            String json =
-                    executor.fetch30MinCandles(scripCode, from, to);
+            try {
+                String json =
+                        executor.fetch30MinCandles(scripCode, from, to);
 
-            emaService.processApiResponse(
-                    String.valueOf(scripCode),
-                    symbol,
-                    json
-            );
+                emaService.processApiResponse(
+                        String.valueOf(scripCode),
+                        symbol,
+                        json
+                );
+
+            } catch (HttpClientErrorException.TooManyRequests ex) {
+              //  System.out.println("Rate limit hit for {} ({}). Skipping.", symbol, scripCode);
+            	
+            	try {
+					Thread.sleep(3000);
+				} catch (InterruptedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+                continue;
+            	
+            } catch (Exception ex) {
+               // log.error("Failed processing {} ({})", symbol, scripCode, ex);
+            }
         }
-
     }
 
     

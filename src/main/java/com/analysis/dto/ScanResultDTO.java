@@ -1,5 +1,7 @@
 package com.analysis.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,6 +9,7 @@ import lombok.Setter;
 @Getter
 public class ScanResultDTO {
 
+    @JsonIgnore
     private String scripCode;
     private String symbol;
     private String close;
