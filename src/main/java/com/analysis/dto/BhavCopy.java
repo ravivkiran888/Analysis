@@ -2,33 +2,39 @@ package com.analysis.dto;
 
 
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
+import lombok.Getter;
+import lombok.Setter;
+
+
+@Setter
+@Getter
 @Document("bhavcopy")
 public class BhavCopy {
+	
+	
+	   @Field("TradDt")
+	    private String tradDt;
 
-    private String TradDt;
-    private String TckrSymb;
-    private Double OpnPric;
-    private Long TtlTradgVol;
-    private Double TtlTrfVal;
+	    @Field("TckrSymb")
+	    private String tckrSymb;
 
-    public String getTradDt() {
-        return TradDt;
-    }
+	    @Field("OpnPric")
+	    private Double opnPric;
 
-    public String getTckrSymb() {
-        return TckrSymb;
-    }
+	    @Field("TtlTradgVol")
+	    private Long ttlTradgVol;
 
-    public Double getOpnPric() {
-        return OpnPric;
-    }
-
-    public Long getTtlTradgVol() {
-        return TtlTradgVol;
-    }
-
-    public Double getTtlTrfVal() {
-        return TtlTrfVal;
-    }
+	    @Field("TtlTrfVal")
+	    private Double ttlTrfVal;
+	    
+	    @Field("ClsPric")
+	    private Long clsPric;
+	    
+	    @Field("HghPric")
+	    private Long hghPric;
+	    
+	    @Field("LwPric")
+	    private Long lwPric;
 }

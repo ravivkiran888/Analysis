@@ -24,7 +24,7 @@ public class VWAPRunner implements CommandLineRunner {
 	@Override
 	public void run(String... args) throws Exception {
 		if (runVwap) {
-			vWapScheduler.runVWAPJob();
+		//	vWapScheduler.runVWAPJob();
 		}
 
 		else {
