@@ -15,5 +15,11 @@ public class TestController {
 	    public String sai() {
 	        return "Hello, Sai!";
 	    }
+	 
+	 
+	 @GetMapping("/sainew")
+	    public String saiNew() {
+	        return "Hello, New Sai!";
+	    }
 	
 }

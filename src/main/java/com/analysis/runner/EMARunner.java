@@ -30,7 +30,7 @@ public class EMARunner implements CommandLineRunner {
 			System.out.println("Start EMA ");
 
 			try {
-				emaScheduler.run();
+			//	emaScheduler.run();
 
 			} catch (Exception e) {
 				e.printStackTrace();

@@ -3,6 +3,9 @@ package com.analysis.schedulers;
 import java.time.LocalDate;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -12,6 +15,8 @@ import com.analysis.services.ScripCache;
 
 @Service
 public class EMAScheduler {
+
+	private static final Logger log = LoggerFactory.getLogger(EMAScheduler.class);
 
     private final ScripCache scripCache;
     private final FivePaisaApiClient executor;
@@ -27,13 +32,15 @@ public class EMAScheduler {
         this.emaService = emaService;
     }
 
-   // @Scheduled(cron = "0 0 8 * * MON-FRI", zone = "Asia/Kolkata")
-
+    @Scheduled(cron = "0 0 20 * * *", zone = "Asia/Kolkata")
     public void run() {
 
         String from = LocalDate.now().minusDays(10).toString();
         String to   = LocalDate.now().minusDays(1).toString();
 
+        log.info("EMA Scheduler started. Date range: {} to {}", from, to);
+
+        
         for (Map.Entry<Integer, String> entry : scripCache.getAllScripEntries()) {
 
             int scripCode = entry.getKey();
@@ -52,18 +59,19 @@ public class EMAScheduler {
                 );
 
             } catch (HttpClientErrorException.TooManyRequests ex) {
-              //  System.out.println("Rate limit hit for {} ({}). Skipping.", symbol, scripCode);
-            	
+             	log.warn("Rate limit hit for {} ({}). Sleeping for 3 seconds.",
+                        symbol, scripCode);
+
             	try {
 					Thread.sleep(3000);
 				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				}
                 continue;
             	
             } catch (Exception ex) {
-               // log.error("Failed processing {} ({})", symbol, scripCode, ex);
+
+            	 log.error("Failed processing EMA for {} ({})",
+                         symbol, scripCode, ex);
             }
         }
     }

@@ -6,7 +6,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.analysis.helpers.VWAPApiBuilder;
@@ -15,7 +15,7 @@ import com.analysis.services.ScripCache;
 import com.analysis.util.VWAPAPIExecutor;
 
 @Component
-public class VWAPRunner implements CommandLineRunner {
+public class VWAPRunner {
 	
 	 @Value("${runvwap:false}")
 	  private boolean runVwap;
@@ -33,10 +33,16 @@ public class VWAPRunner implements CommandLineRunner {
         this.executor = executor;
         this.scripCache = scripCache;
     }
-    @Override
+  
+    @Scheduled(cron = "0 30 9 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 */30 10-15 * * MON-FRI", zone = "Asia/Kolkata")
+    
     public void run(String... args) {
     	
     	if (runVwap) {
+    		
+    	    long start = System.nanoTime();
+
     		
         log.info("VWAP Runner started");
         	System.out.println("VWAP Runner started");
@@ -46,13 +52,7 @@ public class VWAPRunner implements CommandLineRunner {
             int scripCode = entry.getKey();
             String symbol = entry.getValue();
 
-            System.out.println(symbol);
-            
-            log.info(
-                "VWAP processing started | {} ({})",
-                symbol,
-                scripCode
-            );
+//            System.out.println(symbol);
 
             try {
                 List<VWAPRequest> requests =
@@ -72,6 +72,14 @@ public class VWAPRunner implements CommandLineRunner {
         
         System.out.println("VWAP Runner completed");
         log.info("VWAP Runner completed");
+        
+        long end = System.nanoTime();
+
+        
+        long durationMs = (end - start) / 1_000_000;
+
+        System.out.println("Duration took "+durationMs);
+        
     	}
     	
     	else
