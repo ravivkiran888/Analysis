@@ -4,6 +4,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.analysis.helpers.VWAPApiBuilder;
@@ -28,9 +29,12 @@ public class VWAPScheduler {
         this.vwapApiExecutor = vwapApiExecutor;
     }
 
+    // To run every 30 minutes, Monday to Friday, between 9:30 AM and 3:30 PM IST, use this cron expression:
     
-    
-    // @Scheduled(cron = "0 */5 9-15 * * MON-FRI",zone = "Asia/Kolkata")
+    @Scheduled(
+    	    cron = "0 0,30 9-14 * * MON-FRI",
+    	    zone = "Asia/Kolkata"
+    	)
     public void runVWAPJob() {
 
         log.info(
@@ -44,12 +48,7 @@ public class VWAPScheduler {
             int scripCode = entry.getKey();
             String symbol = entry.getValue();
 
-            log.info(
-                "Starting VWAP | {} ({})",
-                symbol,
-                scripCode
-            );
-
+            	
             try {
                 List<VWAPRequest> requests =
                         VWAPApiBuilder.buildRequests(scripCode);
