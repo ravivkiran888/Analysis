@@ -36,8 +36,7 @@ public class VWAPRunner {
   
     @Scheduled(cron = "0 30 9 * * MON-FRI", zone = "Asia/Kolkata")
     @Scheduled(cron = "0 */30 10-15 * * MON-FRI", zone = "Asia/Kolkata")
-    
-    public void run(String... args) {
+    public void runVwapEvery30Minutes() {
     	
     	if (runVwap) {
     		
