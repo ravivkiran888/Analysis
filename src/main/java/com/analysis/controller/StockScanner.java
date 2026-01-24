@@ -23,8 +23,6 @@ public class StockScanner {
 		
 		return stockScannerService.scanStocks()
 		        .stream()
-		        .filter(dto -> dto.getVolume() != null)
-		        .filter(dto -> Long.parseLong(dto.getVolume()) >= 90000)
 		        .toList();
 
 	}

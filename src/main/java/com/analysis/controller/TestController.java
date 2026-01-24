@@ -11,5 +11,9 @@ public class TestController {
 	        return "Hello, Spring Boot!";
 	    }
 	
+	 @GetMapping("/sai")
+	    public String sai() {
+	        return "Hello, Sai!";
+	    }
 	
 }
