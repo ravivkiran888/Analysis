@@ -32,4 +32,7 @@ public class APPConstants {
 	        RateLimiter.create(0.33); // 1 request per 3 seconds
 
 
+	public static final String ACCESS_TOKEN_COLLECTION = "accessToken";
+	
 }
+
