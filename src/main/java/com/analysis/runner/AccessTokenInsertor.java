@@ -13,7 +13,7 @@ import com.analysis.APPConstants;
 import com.analysis.documents.AccessToken;
 
 @SpringBootApplication
-public class AccessTokenInsertor {
+public class AccessTokenInsertor implements CommandLineRunner {
 
     private final MongoTemplate mongoTemplate;
 
@@ -23,23 +23,25 @@ public class AccessTokenInsertor {
 
    
 
-  //  @Override
-    public void runAccessTokenInsertor(String... args) {
+    @Override
+    public void run(String... args) {
 
+    	/*
         Date expiresAt = Date.from(
-                Instant.now().plus(10, ChronoUnit.HOURS)
+                Instant.now().plus(24, ChronoUnit.HOURS)
         );
 
         
-        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NjkzNDYzNTAsImV4cCI6MTc2OTM2NTc5OSwiaWF0IjoxNzY5MzQ2MzUwfQ.A1Wp2n4jSmW6Z9LN3qDkzmX_rChNVbsjuL3-V4n5PQA";
+        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3Njk1MTY1MDcsImV4cCI6MTc2OTUzODU5OSwiaWF0IjoxNzY5NTE2NTA3fQ.nQq1lYKyh1hAA_QvGOFnbc7PnXgVWYD-caJTWBtoxQM";
         
         AccessToken token = new AccessToken(
         		accessToken,
                 expiresAt
         );
 
-      //  mongoTemplate.save(token, APPConstants.ACCESS_TOKEN_COLLECTION);
+        mongoTemplate.save(token, APPConstants.ACCESS_TOKEN_COLLECTION);
 
-       // System.out.println("Access token inserted with 10-hour expiry");
+        System.out.println("Access token inserted with 10-hour expiry");
+        */
     }
 }

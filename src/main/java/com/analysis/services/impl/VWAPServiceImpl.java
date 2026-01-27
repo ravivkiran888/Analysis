@@ -11,50 +11,38 @@ import org.springframework.stereotype.Service;
 
 import com.analysis.APPConstants;
 import com.analysis.documents.VWAPValue;
-import com.analysis.repositories.VWAPValueRepository;
 import com.analysis.services.VWAPService;
+
 
 @Service
 public class VWAPServiceImpl implements VWAPService {
 
-    private final VWAPValueRepository repository;
     private final MongoTemplate mongoTemplate;
 
-    public VWAPServiceImpl(
-            VWAPValueRepository repository,
-            MongoTemplate mongoTemplate) {
-        this.repository = repository;
+    public VWAPServiceImpl(MongoTemplate mongoTemplate) {
         this.mongoTemplate = mongoTemplate;
-    }
-
-    /**
-     * Deletes ALL VWAP values once per job
-     */
-    @Override
-    public void deleteEntryInVWAP(String scriptCode) {
-    	repository.deleteByScripCode(scriptCode);
     }
 
     @Override
     public void saveOrUpdateVWAP(
-    		String scripCode,
+            String scripCode,
             String symbol,
             BigDecimal vwap,
             BigDecimal close,
-            BigDecimal volume
-    		) {
+            BigDecimal volume) {
 
+        // ✅ MUST match unique index
         Query query = new Query(
-                Criteria.where(APPConstants.SYMBOL).is(symbol)
+                Criteria.where(APPConstants.SCRIPT_CODE).is(scripCode)
         );
 
         Update update = new Update()
-                .set(APPConstants.SCRIPT_CODE, scripCode)
                 .set(APPConstants.SYMBOL, symbol)
                 .set("vwap", vwap)
                 .set("close", close)
                 .set("volume", volume)
-                .set("updatedAt", Instant.now());
+                .set("updatedAt", Instant.now())
+                .setOnInsert(APPConstants.SCRIPT_CODE, scripCode);
 
         mongoTemplate.upsert(
                 query,

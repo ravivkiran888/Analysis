@@ -104,7 +104,6 @@ public class VWAPCalculator {
                             RoundingMode.HALF_UP);
 
             
-            vwapService.deleteEntryInVWAP(String.valueOf(scripCode));
             
             vwapService.saveOrUpdateVWAP(
                     String.valueOf(scripCode),

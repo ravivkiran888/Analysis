@@ -2,11 +2,17 @@ package com.analysis.services.impl;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
+import com.analysis.APPConstants;
 import com.analysis.model.RSIValue;
-import com.analysis.repository.RSIValueRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 
 @Service
@@ -14,15 +20,16 @@ public class RSIServiceImpl {
 
     private static final int PERIOD = 14;
 
-    private final RSIValueRepository repository;
+    private final MongoTemplate mongoTemplate;
 
-    public RSIServiceImpl(RSIValueRepository repository) {
-        this.repository = repository;
+    public RSIServiceImpl(MongoTemplate mongoTemplate) {
+        this.mongoTemplate = mongoTemplate;
     }
 
     /**
      * TradingView-style RSI(14)
      * Calculated ONLY from candle response
+     * One RSI per ScripCode
      */
     public void calculateAndSaveRSI(
             String scripCode,
@@ -33,8 +40,7 @@ public class RSIServiceImpl {
         if (candles == null || candles.size() < PERIOD + 1) {
             return;
         }
-        
-       
+
         BigDecimal gainSum = BigDecimal.ZERO;
         BigDecimal lossSum = BigDecimal.ZERO;
 
@@ -71,18 +77,24 @@ public class RSIServiceImpl {
 
         BigDecimal rsi = calculateRSI(avgGain, avgLoss);
 
-        repository.deleteByScripCode(scripCode);
-                
+        /* ================== ATOMIC UPSERT ================== */
 
-        
-        repository.save(
-                new RSIValue(
-                        scripCode,
-                        symbol,
-                        PERIOD,
-                        rsi
-                )
+        Query query = new Query(
+                Criteria.where(APPConstants.SCRIPT_CODE).is(scripCode)
         );
+
+        Update update = new Update()
+                .set(APPConstants.SYMBOL, symbol)
+                .set("rsi", rsi)
+                .set("calculatedAt", Instant.now())
+                .setOnInsert(APPConstants.SCRIPT_CODE, scripCode)
+                .setOnInsert("period", PERIOD);
+
+        try {
+            mongoTemplate.upsert(query, update, RSIValue.class);
+        } catch (DuplicateKeyException e) {
+            // Safe to ignore — unique index already protects us
+        }
     }
 
     private BigDecimal calculateRSI(
