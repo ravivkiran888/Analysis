@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import com.analysis.dto.ScanResultDTO;
 
 @Service
-public class StockScannerService {
+public class TrendScannerService {
 
     @Autowired
     private MongoTemplate mongoTemplate;

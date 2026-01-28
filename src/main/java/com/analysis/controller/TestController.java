@@ -17,9 +17,9 @@ public class TestController {
 	    }
 	 
 	 
-	 @GetMapping("/sainew")
+	 @GetMapping("/saibaba")
 	    public String saiNew() {
-	        return "Hello, New Sai!";
+	        return "Hello, New Baba!";
 	    }
 	
 }
