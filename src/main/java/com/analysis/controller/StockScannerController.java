@@ -30,7 +30,7 @@ public class StockScannerController {
 		        .stream()
 		        .filter(e ->
 		            e.getVolume() != null &&
-		            Long.parseLong(e.getVolume()) > 2_000_000
+		            Long.parseLong(e.getVolume()) > 50000
 		        )
 		        .toList();
 
@@ -45,7 +45,7 @@ public class StockScannerController {
 		        .stream()
 		        .filter(e ->
 		            e.getVolume() != null &&
-		            Long.parseLong(e.getVolume()) > 2_000_000
+		            Long.parseLong(e.getVolume()) > 50000
 		        )
 		        .toList();
 
