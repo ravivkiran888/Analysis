@@ -30,6 +30,8 @@ public class VWAPValue {
     private String symbol;
 
     private BigDecimal vwap;
+    
+    private BigDecimal close;
 
     private Instant updatedAt;
 }
