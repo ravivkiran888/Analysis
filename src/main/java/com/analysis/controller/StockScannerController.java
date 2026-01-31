@@ -31,6 +31,16 @@ public class StockScannerController {
 	}
 
 
+	 @GetMapping("/sai")
+	    public String sai() {
+	        return "Hello, Sai!";
+	    }
+	 
+	  @GetMapping("/status")
+	    public String status() {
+	        return "Service is UP";
+	    }
+
 
 	/**
 	 * Filters eligible stocks by signal state, sorts by volumeRatio descending,
@@ -48,6 +58,8 @@ public class StockScannerController {
 	    stocks.forEach(stock -> {
 	        stock.setLastVolumeFormatted(NumberFormatter.formatLargeNumber(stock.getLastVolume()));
 	        stock.setAvgVolume20Formatted(NumberFormatter.formatLargeNumber(stock.getAvgVolume20()));
+	        
+	        stock.setCurrentVolume(NumberFormatter.formatLargeNumber(stock.getVolume()));
 	    });
 
 	    return stocks;

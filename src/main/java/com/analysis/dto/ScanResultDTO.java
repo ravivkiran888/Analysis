@@ -11,13 +11,14 @@ import lombok.Data;
 @Data
 public class ScanResultDTO {
 
+	 @JsonIgnore
     private String scripCode;
     private String symbol;
     private SignalState signalState;
 
     private BigDecimal close;
     private BigDecimal vwap;
-    @JsonProperty("currentVolume")
+    @JsonIgnore
     private BigDecimal volume;
 
     private BigDecimal ema20;
@@ -35,4 +36,8 @@ public class ScanResultDTO {
     private String lastVolumeFormatted;
     @JsonProperty("avgVolume")
     private String avgVolume20Formatted;
+    
+    
+    @JsonProperty("currentVolume")
+    private String currentVolume;
 }

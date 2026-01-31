@@ -138,11 +138,7 @@ public void scanAll() {
                 "signal_states"
         );
 
-        log.info(
-            "Signal updated | scrip={} | state={}",
-            scripCode,
-            state
-        );
+       
     }
 
 
