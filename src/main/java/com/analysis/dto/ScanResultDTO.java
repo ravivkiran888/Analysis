@@ -1,27 +1,21 @@
 package com.analysis.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.math.BigDecimal;
+import com.analysis.SignalState;
+import lombok.Data;
 
-import lombok.Getter;
-import lombok.Setter;
+@Data
 
-@Setter
-@Getter
 public class ScanResultDTO {
 
-    @JsonIgnore
-    private String scripCode;
     private String symbol;
-    private String close;
-    private String volume;
+    private SignalState signalState;
 
-    public ScanResultDTO() {}
+    private BigDecimal close;
+    private BigDecimal vwap;
+    private BigDecimal volume;
 
-    public ScanResultDTO(String scripCode, String symbol, String close, String volume) {
-        this.scripCode = scripCode;
-        this.symbol = symbol;
-        this.close = close;
-        this.volume = volume;
-    }
+    private String updatedAt;
 
+   
 }

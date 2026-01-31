@@ -10,8 +10,8 @@ import com.analysis.schedulers.EMAScheduler;
 public class EMARunner implements CommandLineRunner {
 
 	
-	 @Value("${runrsi:false}")
-	  private boolean runrsi;
+	 @Value("${runema:false}")
+	  private boolean runema;
 	
 	
     private final EMAScheduler emaScheduler;
@@ -25,7 +25,7 @@ public class EMARunner implements CommandLineRunner {
     @Override
 	public void run(String... args) {
 
-		if (runrsi) {
+		if (runema) {
 			System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
 			System.out.println("Start EMA ");
 
