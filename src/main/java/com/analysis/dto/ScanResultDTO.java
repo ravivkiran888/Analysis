@@ -40,4 +40,9 @@ public class ScanResultDTO {
     
     @JsonProperty("currentVolume")
     private String currentVolume;
+    
+    
+    private String updatedAt;
+    
+    
 }

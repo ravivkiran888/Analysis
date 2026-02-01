@@ -35,9 +35,8 @@ public class VWAPScheduler {
         this.accessTokenService = accessTokenService;		
     }
 
-    // To run every 30 minutes, Monday to Friday, between 9:30 AM and 3:30 PM IST, use this cron expression:
-    
-    @Scheduled(cron = "0 */10 9-14 * * *", zone = "Asia/Kolkata")
+  @Scheduled(cron = "0 */10 9-14 * * *", zone = "Asia/Kolkata")
+
     public void runVWAPJob() {
     	
     	String accessToken = accessTokenService.getAccessToken();

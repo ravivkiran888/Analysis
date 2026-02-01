@@ -12,5 +12,6 @@ public interface VWAPService {
             BigDecimal vwap,
             BigDecimal close,
             BigDecimal volume
+           
     );
 }
