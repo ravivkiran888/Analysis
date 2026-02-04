@@ -18,8 +18,7 @@ import com.analysis.services.VWAPCalculator;
 @Component
 public class VWAPAPIExecutor {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(VWAPAPIExecutor.class);
+    private static final Logger log = LoggerFactory.getLogger(VWAPAPIExecutor.class);
 
     private final WebClient webClient;
     private final VWAPCalculator vwapCalculator;
@@ -36,63 +35,69 @@ public class VWAPAPIExecutor {
     }
 
     public void execute(List<VWAPRequest> requests) {
-
         for (VWAPRequest request : requests) {
-
-            // GLOBAL rate control
+            // This will rate limit to 18 requests/sec
             APPConstants.RATE_LIMITER.acquire();
-
+            
             try {
-                callApi(request);
-
+                callApiWithRetry(request, false);
+                
             } catch (Exception ex) {
-                log.error(
-                    "VWAP API failed | scrip={}",
-                    request.getScripCode(),
-                    ex
-                );
+                log.error("VWAP API failed after retries | scrip={}", 
+                        request.getScripCode(), ex);
             }
         }
     }
 
-    private void callApi(VWAPRequest request) {
-
+    private void callApiWithRetry(VWAPRequest request, boolean isRetry) {
         String accessToken = accessTokenService.getAccessToken();
 
         try {
-            String response =
-                    webClient.get()
-                            .uri(request.getUrl())
-                            .headers(h -> {
-                                h.setBearerAuth(accessToken);
-                                h.setContentType(MediaType.APPLICATION_JSON);
-                            })
-                            .retrieve()
-                            .bodyToMono(String.class)
-                            .timeout(Duration.ofSeconds(10))
-                            .block();
+            String response = webClient.get()
+                    .uri(request.getUrl())
+                    .headers(h -> {
+                        h.setBearerAuth(accessToken);
+                        h.setContentType(MediaType.APPLICATION_JSON);
+                    })
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
 
-            try {
-                vwapCalculator.calculateFromApiResponse(
-                        request.getScripCode(),
-                        response
-                );
-            } catch (Exception e) {
-            	
-            	log.error(
-                        "VWAP calculation failed | scrip={}",
-                        request.getScripCode(),
-                        e
-                    );
-            }
-
+            // Process response
+            vwapCalculator.calculateFromApiResponse(request.getScripCode(), response);
+            
         } catch (WebClientResponseException.TooManyRequests ex) {
-           
-        	
-        	 log.warn(
-        	            "VWAP API rate limit exceeded | scrip={}",
-        	            request.getScripCode()
-        	        );
+            if (!isRetry) {
+                log.warn("Rate limit hit for scrip {}. Retrying in 2 seconds...", 
+                        request.getScripCode());
+                try {
+                    Thread.sleep(2000);
+                    callApiWithRetry(request, true); // Retry once
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during retry", ie);
+                }
+            } else {
+                log.error("Rate limit hit again for scrip {}. Giving up.", 
+                        request.getScripCode());
+            }
+            
+        } catch (Exception e) {
+            if (!isRetry) {
+                // First attempt failed, try once more
+                try {
+                    log.warn("First attempt failed for scrip {}. Retrying...", 
+                            request.getScripCode());
+                    Thread.sleep(1000);
+                    callApiWithRetry(request, true);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+            } else {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

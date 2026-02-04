@@ -28,9 +28,7 @@ public class APPConstants {
 	public static final String SCRIPT_CODE = "ScripCode";
 	public static final String SYMBOL = "Symbol";
 
-	public static final RateLimiter RATE_LIMITER =
-	        RateLimiter.create(0.33); // 1 request per 3 seconds
-
+	public static final RateLimiter RATE_LIMITER = RateLimiter.create(18); // 18 requests/sec (safe under 20)
 
 	public static final String ACCESS_TOKEN_COLLECTION = "accessToken";
 	

@@ -38,7 +38,7 @@ public class AccessTokenRunner  implements CommandLineRunner{
         );
 
         
-        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3Njk4OTY5NzIsImV4cCI6MTc2OTk3MDU5OSwiaWF0IjoxNzY5ODk2OTcyfQ.YD1my0_5GKxOO0POuT8T5O-wABKYblX9KF4KLk3ubMI";
+        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NzAyMTc2MzksImV4cCI6MTc3MDIyOTc5OSwiaWF0IjoxNzcwMjE3NjM5fQ.wc_QzzYdsdLjdy7O9N_S-Zal2kWVbOLWDX-LRXOeUSY";
         
         AccessToken token = new AccessToken(
         		accessToken,
