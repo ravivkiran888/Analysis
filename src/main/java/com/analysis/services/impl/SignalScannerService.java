@@ -42,7 +42,7 @@ public class SignalScannerService {
         this.scripCache = scripCache;
     }
 
-    @Scheduled(cron = "0 */35 * * * *", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 */8 * * * *", zone = "Asia/Kolkata")
     public void scanAll() {
 
         log.info("Signal scan started");
