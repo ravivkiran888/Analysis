@@ -27,6 +27,7 @@ public class APPConstants {
 
 	public static final String SCRIPT_CODE = "ScripCode";
 	public static final String SYMBOL = "Symbol";
+	public static final String SECTOR = "Sector";
 
 	public static final RateLimiter RATE_LIMITER = RateLimiter.create(18); // 18 requests/sec (safe under 20)
 

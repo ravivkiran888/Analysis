@@ -11,7 +11,8 @@ public interface VWAPService {
             String symbol,
             BigDecimal vwap,
             BigDecimal close,
-            BigDecimal volume
+            BigDecimal volume,
+            String sector
            
     );
 }

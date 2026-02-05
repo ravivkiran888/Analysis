@@ -1,8 +1,10 @@
 package com.analysis.dto;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 import com.analysis.SignalState;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -41,8 +43,12 @@ public class ScanResultDTO {
     @JsonProperty("currentVolume")
     private String currentVolume;
     
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    private Instant updatedAt;
     
-    private String updatedAt;
-    
-    
+    private String sector = "UNKNOWN";
+
+    public String getSector() {
+        return sector == null ? "UNKNOWN" : sector;
+    }
 }

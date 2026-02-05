@@ -29,7 +29,7 @@ public class VWAPServiceImpl implements VWAPService {
             String symbol,
             BigDecimal vwap,
             BigDecimal close,
-            BigDecimal volume) {
+            BigDecimal volume,String sector) {
 
         // ✅ MUST match unique index
         Query query = new Query(
@@ -41,6 +41,7 @@ public class VWAPServiceImpl implements VWAPService {
                 .set("vwap", vwap)
                 .set("close", close)
                 .set("volume", volume)
+                .set(APPConstants.SECTOR, sector)
                 .set("updatedAt", Instant.now())
                 .setOnInsert(APPConstants.SCRIPT_CODE, scripCode);
 

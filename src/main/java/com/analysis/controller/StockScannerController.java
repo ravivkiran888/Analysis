@@ -28,10 +28,6 @@ public class StockScannerController {
 	    return getSortedStocksByState(SignalState.ENTRY_READY);
 	}
 
-	@GetMapping("/watch")
-	public List<ScanResultDTO> watchStocks() {
-	    return getSortedStocksByState(SignalState.WATCH);
-	}
 
 
 	 @GetMapping("/sai")

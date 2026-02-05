@@ -34,4 +34,7 @@ public class VWAPValue {
     private BigDecimal close;
 
     private Instant updatedAt;
+    
+    @Field("Sector")
+    private String sector;
 }

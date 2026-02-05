@@ -40,6 +40,7 @@ public class TrendScannerService {
                 .and("vwap.vwap").as("vwap")
                 .and("vwap.volume").as("volume")
                 .and("vwap.updatedAt").as("updatedAt") 
+                .and("vwap.Sector").as("sector") 
                 .and("ema.ema20").as("ema20")
                 .and("ema.ema50").as("ema50")
                 .and("ema.lastVolume").as("lastVolume")

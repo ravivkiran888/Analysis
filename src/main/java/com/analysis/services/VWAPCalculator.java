@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Component;
 
+import com.analysis.dto.ScripInfo;
 import com.analysis.services.impl.RSIServiceImpl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,7 +93,9 @@ public class VWAPCalculator {
                     cumulativeVolume.add(volume);
         }
 
-        String symbol = scripCache.getSymbol(scripCode);
+        ScripInfo info = scripCache.getScripInfo(scripCode);
+        String symbol = info.getSymbol();
+        String sector = info.getSector();
 
         // ---- VWAP ----
         if (cumulativeVolume.signum() > 0) {
@@ -110,7 +113,8 @@ public class VWAPCalculator {
                     symbol,
                     vwap,
                     lastClose,
-                    totalTradedVolume
+                    totalTradedVolume,
+                    sector
             );
         }
 

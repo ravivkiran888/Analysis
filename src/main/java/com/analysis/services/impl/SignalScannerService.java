@@ -1,8 +1,14 @@
 package com.analysis.services.impl;
 
 
+
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -14,6 +20,7 @@ import org.springframework.stereotype.Service;
 import com.analysis.SignalState;
 import com.analysis.documents.EMAValue;
 import com.analysis.documents.VWAPValue;
+import com.analysis.dto.ScripInfo;
 import com.analysis.model.RSIValue;
 import com.analysis.scanner.SignalStateDoc;
 import com.analysis.services.ScripCache;
@@ -35,39 +42,73 @@ public class SignalScannerService {
         this.scripCache = scripCache;
     }
 
-
- @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Kolkata")
-public void scanAll() {
+    @Scheduled(cron = "0 */35 * * * *", zone = "Asia/Kolkata")
+    public void scanAll() {
 
         log.info("Signal scan started");
 
-        for (Integer scripCode : scripCache.getAllScripCodes()) {
-            try {
-                evaluateAndSave(scripCode);
-            } catch (Exception ex) {
-                log.error(
-                    "Signal evaluation failed | scrip={}",
-                    scripCode,
-                    ex
-                );
-            }
+        var scripCodes = scripCache.getAllScripCodes();
+        int total = scripCodes.size();
+
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        CountDownLatch latch = new CountDownLatch(total);
+        AtomicInteger success = new AtomicInteger();
+        AtomicInteger failure = new AtomicInteger();
+
+        for (Integer scripCode : scripCodes) {
+            executor.submit(() -> {
+                try {
+                    evaluateAndSave(scripCode);
+                    success.incrementAndGet();
+                } catch (Exception ex) {
+                    failure.incrementAndGet();
+                    log.error("Signal evaluation failed | scrip={}", scripCode, ex);
+                } finally {
+                    latch.countDown();
+                }
+            });
         }
 
-        log.info("Signal scan completed");
+        try {
+            boolean completed = latch.await(3, TimeUnit.MINUTES);
+
+            if (!completed) {
+                log.warn("Signal scan timeout! Pending={}", latch.getCount());
+            }
+
+            log.info(
+                    "Signal scan completed | success={} failed={}",
+                    success.get(),
+                    failure.get()
+            );
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Signal scan interrupted", e);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     /* ===================================================== */
 
     private void evaluateAndSave(Integer scripCode) {
 
+        ScripInfo scripInfo = scripCache.getScripInfo(scripCode);
+        if (scripInfo == null) {
+            log.warn("Missing cache entry for scripCode {}", scripCode);
+            return;
+        }
+
         String code = String.valueOf(scripCode);
-        String symbol = scripCache.getSymbol(scripCode);
+        String symbol = scripInfo.getSymbol();
+        String sector = scripInfo.getSector();
 
         EMAValue ema = fetchEMA(code);
         VWAPValue vwap = fetchVWAP(code);
         RSIValue rsi = fetchRSI(code);
 
-        // If any dependency missing → skip
+        // Dependency guard
         if (ema == null || vwap == null || rsi == null) {
             return;
         }
@@ -81,12 +122,11 @@ public void scanAll() {
                         rsi.getRsi()
                 );
 
-        saveSignal(code, symbol, newState);
+        saveSignal(code, symbol, sector, newState);
     }
 
-    /**
-     * PURE DECISION LOGIC
-     */
+    /* ================= DECISION LOGIC ================= */
+
     private SignalState evaluateSignal(
             BigDecimal ema20,
             BigDecimal ema50,
@@ -112,13 +152,12 @@ public void scanAll() {
         return SignalState.ENTRY_READY;
     }
 
-    /**
-     * SINGLE WRITE POINT
-     */
-    
+    /* ================= SINGLE WRITE ================= */
+
     private void saveSignal(
             String scripCode,
             String symbol,
+            String sector,
             SignalState state) {
 
         Query query = Query.query(
@@ -127,6 +166,7 @@ public void scanAll() {
 
         Update update = new Update()
                 .set("Symbol", symbol)
+                .set("Sector", sector)
                 .set("signalState", state)
                 .set("evaluatedAt", Instant.now())
                 .setOnInsert("ScripCode", scripCode);
@@ -137,18 +177,13 @@ public void scanAll() {
                 SignalStateDoc.class,
                 "signal_states"
         );
-
-       
     }
-
 
     /* ================= FETCH HELPERS ================= */
 
     private EMAValue fetchEMA(String scripCode) {
         return mongoTemplate.findOne(
-                Query.query(
-                    Criteria.where("ScripCode").is(scripCode)
-                ),
+                Query.query(Criteria.where("ScripCode").is(scripCode)),
                 EMAValue.class,
                 "ema_30m"
         );
@@ -156,9 +191,7 @@ public void scanAll() {
 
     private VWAPValue fetchVWAP(String scripCode) {
         return mongoTemplate.findOne(
-                Query.query(
-                    Criteria.where("ScripCode").is(scripCode)
-                ),
+                Query.query(Criteria.where("ScripCode").is(scripCode)),
                 VWAPValue.class,
                 "vwap_values"
         );
@@ -166,9 +199,7 @@ public void scanAll() {
 
     private RSIValue fetchRSI(String scripCode) {
         return mongoTemplate.findOne(
-                Query.query(
-                    Criteria.where("ScripCode").is(scripCode)
-                ),
+                Query.query(Criteria.where("ScripCode").is(scripCode)),
                 RSIValue.class,
                 "rsi_values"
         );
