@@ -42,7 +42,8 @@ public class SignalScannerService {
         this.scripCache = scripCache;
     }
 
-    @Scheduled(cron = "0 */8 * * * *", zone = "Asia/Kolkata")
+    // market window (9:00–15:30)
+    @Scheduled(cron = "0 0/9 9-14 * * MON-FRI", zone = "Asia/Kolkata")
     public void scanAll() {
 
         log.info("Signal scan started");
