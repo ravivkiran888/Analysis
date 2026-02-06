@@ -38,7 +38,7 @@ public class AccessTokenRunner  implements CommandLineRunner{
         );
 
         
-        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NzAyMTc2MzksImV4cCI6MTc3MDIyOTc5OSwiaWF0IjoxNzcwMjE3NjM5fQ.wc_QzzYdsdLjdy7O9N_S-Zal2kWVbOLWDX-LRXOeUSY";
+        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NzAzMzc3MjAsImV4cCI6MTc3MDQwMjU5OSwiaWF0IjoxNzcwMzM3NzIwfQ.piZSADctzy7fG1_sTnV7Saryi3XqbyDjtWREbdUO1Lc";
         
         AccessToken token = new AccessToken(
         		accessToken,
@@ -47,7 +47,7 @@ public class AccessTokenRunner  implements CommandLineRunner{
 
         mongoTemplate.save(token, APPConstants.ACCESS_TOKEN_COLLECTION);
 
-        System.out.println("Access token inserted with 10-hour expiry");
+        System.out.println("Access token inserted with 24-hour expiry");
         
     	}
         

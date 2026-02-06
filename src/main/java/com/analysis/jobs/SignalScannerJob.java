@@ -1,6 +1,4 @@
-package com.analysis.services.impl;
-
-
+package com.analysis.jobs;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -14,7 +12,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import com.analysis.SignalState;
@@ -25,16 +22,20 @@ import com.analysis.model.RSIValue;
 import com.analysis.scanner.SignalStateDoc;
 import com.analysis.services.ScripCache;
 
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
-public class SignalScannerService {
+public class SignalScannerJob {
 
     private final MongoTemplate mongoTemplate;
     private final ScripCache scripCache;
 
-    public SignalScannerService(
+    // Shared thread pool (DO NOT recreate every run)
+    private final ExecutorService executorService = Executors.newFixedThreadPool(8);
+
+    public SignalScannerJob(
             MongoTemplate mongoTemplate,
             ScripCache scripCache) {
 
@@ -42,22 +43,20 @@ public class SignalScannerService {
         this.scripCache = scripCache;
     }
 
-    // market window (9:00–15:30)
-    @Scheduled(cron = "0 0/9 9-14 * * MON-FRI", zone = "Asia/Kolkata")
-    public void scanAll() {
+    public void run() {
 
-        log.info("Signal scan started");
+        log.info("Signal Scanner Job started");
 
         var scripCodes = scripCache.getAllScripCodes();
         int total = scripCodes.size();
 
-        ExecutorService executor = Executors.newFixedThreadPool(8);
         CountDownLatch latch = new CountDownLatch(total);
         AtomicInteger success = new AtomicInteger();
         AtomicInteger failure = new AtomicInteger();
 
         for (Integer scripCode : scripCodes) {
-            executor.submit(() -> {
+
+            executorService.submit(() -> {
                 try {
                     evaluateAndSave(scripCode);
                     success.incrementAndGet();
@@ -70,25 +69,7 @@ public class SignalScannerService {
             });
         }
 
-        try {
-            boolean completed = latch.await(3, TimeUnit.MINUTES);
-
-            if (!completed) {
-                log.warn("Signal scan timeout! Pending={}", latch.getCount());
-            }
-
-            log.info(
-                    "Signal scan completed | success={} failed={}",
-                    success.get(),
-                    failure.get()
-            );
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Signal scan interrupted", e);
-        } finally {
-            executor.shutdown();
-        }
+        awaitCompletion(latch, success, failure);
     }
 
     /* ===================================================== */
@@ -204,5 +185,34 @@ public class SignalScannerService {
                 RSIValue.class,
                 "rsi_values"
         );
+    }
+
+    private void awaitCompletion(
+            CountDownLatch latch,
+            AtomicInteger success,
+            AtomicInteger failure) {
+
+        try {
+            boolean completed = latch.await(3, TimeUnit.MINUTES);
+
+            if (!completed) {
+                log.warn("Signal scan timeout! Pending={}", latch.getCount());
+            }
+
+            log.info(
+                    "Signal scan completed | success={} failed={}",
+                    success.get(),
+                    failure.get()
+            );
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Signal scan interrupted", e);
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        executorService.shutdown();
     }
 }

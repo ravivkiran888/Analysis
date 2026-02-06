@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
@@ -26,9 +25,9 @@ import com.analysis.services.ScripCache;
 import jakarta.annotation.PreDestroy;
 
 @Service
-public class EMAScheduler {
+public class EMAJob {
 
-    private static final Logger log = LoggerFactory.getLogger(EMAScheduler.class);
+    private static final Logger log = LoggerFactory.getLogger(EMAJob.class);
 
     private final ScripCache scripCache;
     private final FivePaisaApiClient executor;
@@ -38,7 +37,7 @@ public class EMAScheduler {
     // Fixed thread pool for ~250 scrips
     private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
-    public EMAScheduler(
+    public EMAJob(
             ScripCache scripCache,
             FivePaisaApiClient executor,
             EMAService emaService,
@@ -50,16 +49,13 @@ public class EMAScheduler {
         this.accessTokenService = accessTokenService;
     }
 
-    // Every 15 minutes between 9:00 AM and 3:30 PM (Mon–Fri IST)
-    @Scheduled(cron = "0 */15 9-14 * * MON-FRI", zone = "Asia/Kolkata")
-    @Scheduled(cron = "0 0-30/15 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void run() {
 
-        log.info("EMA Scheduler started");
+        log.info("EMA Job started");
 
         String accessToken = accessTokenService.getAccessToken();
         if (!StringUtils.hasText(accessToken)) {
-            log.error("Access token not available. Skipping EMA job.");
+            log.error("EMA Job: Access token missing. Skipping.");
             return;
         }
 
@@ -77,44 +73,41 @@ public class EMAScheduler {
         AtomicInteger failureCount = new AtomicInteger();
 
         for (Map.Entry<Integer, ScripInfo> entry : scripList) {
+
             executorService.submit(() -> {
                 try {
-                    processSingleScrip(entry.getKey(), entry.getValue(), from, to);
+                    processSingleScrip(
+                            entry.getKey(),
+                            entry.getValue(),
+                            from,
+                            to
+                    );
                     successCount.incrementAndGet();
+
                 } catch (Exception e) {
                     failureCount.incrementAndGet();
-                    log.error("Failed for {} ({}): {}",
+                    log.error(
+                            "EMA failed for {} ({})",
                             entry.getValue().getSymbol(),
                             entry.getKey(),
-                            e.getMessage());
+                            e
+                    );
                 } finally {
                     latch.countDown();
 
                     long remaining = latch.getCount();
                     if (remaining % 25 == 0) {
-                        log.info("EMA Progress: {}/{} completed",
+                        log.info(
+                                "EMA Progress: {}/{} completed",
                                 totalScrips - remaining,
-                                totalScrips);
+                                totalScrips
+                        );
                     }
                 }
             });
         }
 
-        try {
-            boolean completed = latch.await(10, TimeUnit.MINUTES);
-
-            if (!completed) {
-                log.warn("EMA Scheduler timeout! {} tasks still pending", latch.getCount());
-            }
-
-            log.info("EMA Scheduler completed. Success: {}, Failed: {}",
-                    successCount.get(),
-                    failureCount.get());
-
-        } catch (InterruptedException e) {
-            log.error("EMA Scheduler interrupted", e);
-            Thread.currentThread().interrupt();
-        }
+        awaitCompletion(latch, successCount, failureCount);
     }
 
     private void processSingleScrip(
@@ -135,6 +128,7 @@ public class EMAScheduler {
 
             try {
                 Thread.sleep(2000);
+
                 String json = executor.fetch30MinCandles(scripCode, from, to);
                 emaService.processApiResponse(String.valueOf(scripCode), symbol, json);
 
@@ -143,13 +137,45 @@ public class EMAScheduler {
                 log.error("Interrupted during retry for {} ({})", symbol, scripCode);
 
             } catch (Exception retryEx) {
-                log.error("Retry failed for {} ({}): {}",
-                        symbol, scripCode, retryEx.getMessage());
+                log.error(
+                        "Retry failed for {} ({}): {}",
+                        symbol,
+                        scripCode,
+                        retryEx.getMessage()
+                );
             }
 
         } catch (Exception e) {
-            log.error("EMA processing failed for {} ({}): {}",
-                    symbol, scripCode, e.getMessage());
+            log.error(
+                    "EMA processing failed for {} ({}): {}",
+                    symbol,
+                    scripCode,
+                    e.getMessage()
+            );
+        }
+    }
+
+    private void awaitCompletion(
+            CountDownLatch latch,
+            AtomicInteger successCount,
+            AtomicInteger failureCount) {
+
+        try {
+            boolean completed = latch.await(10, TimeUnit.MINUTES);
+
+            if (!completed) {
+                log.warn("EMA Job timeout! {} tasks still pending", latch.getCount());
+            }
+
+            log.info(
+                    "EMA Job completed. Success: {}, Failed: {}",
+                    successCount.get(),
+                    failureCount.get()
+            );
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("EMA Job interrupted", e);
         }
     }
 
