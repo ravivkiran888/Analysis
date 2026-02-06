@@ -2,6 +2,7 @@ package com.analysis.services;
 
 import java.util.List;
 
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
@@ -10,7 +11,6 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Service;
 
 import com.analysis.dto.ScanResultDTO;
-import com.analysis.helper.SignalHelper;
 
 @Service
 public class TrendScannerService {
@@ -21,39 +21,45 @@ public class TrendScannerService {
     public List<ScanResultDTO> getEligibleStocks() {
 
         UnwindOperation unwindVwap = Aggregation.unwind("vwap", true);
-        UnwindOperation unwindEma = Aggregation.unwind("ema", true);
+        UnwindOperation unwindMarketSnapshot = Aggregation.unwind("marketSnapshot", true);
 
         Aggregation aggregation = Aggregation.newAggregation(
-            Aggregation.match(Criteria.where("signalState").in("WATCH", "ENTRY_READY")),
+            // Match only ENTRY_READY signals
+            Aggregation.match(Criteria.where("signalState").in("ENTRY_READY")),
 
+            // Join with vwap_values collection (only for updatedAt)
             Aggregation.lookup("vwap_values", "ScripCode", "ScripCode", "vwap"),
             unwindVwap,
 
-            Aggregation.lookup("ema_30m", "ScripCode", "ScripCode", "ema"),
-            unwindEma,
+            // Join with market_snapshots collection
+            Aggregation.lookup("market_snapshots", "ScripCode", "ScripCode", "marketSnapshot"),
+            unwindMarketSnapshot,
 
+            // Project ONLY the fields you need
             Aggregation.project()
+                // From signal_states
                 .and("ScripCode").as("scripCode")
                 .and("symbol").as("symbol")
                 .and("signalState").as("signalState")
-                .and("vwap.close").as("close")
-                .and("vwap.vwap").as("vwap")
-                .and("vwap.volume").as("volume")
-                .and("vwap.updatedAt").as("updatedAt") 
-                .and("vwap.Sector").as("sector") 
-                .and("ema.ema20").as("ema20")
-                .and("ema.ema50").as("ema50")
-                .and("ema.lastVolume").as("lastVolume")
-                .and("ema.avgVolume20").as("avgVolume20")
+                .and("Sector").as("sector")
+                
+                // From vwap_values (ONLY updatedAt)
+                .and("vwap.updatedAt").as("vwapUpdatedAt") // Renamed for clarity
+                
+                // From market_snapshots
+                .and("marketSnapshot.open").as("open")
+                .and("marketSnapshot.high").as("high")
+                .and("marketSnapshot.low").as("low")
+                .and("marketSnapshot.close").as("close")
+                .and("marketSnapshot.volume").as("volume")
+                .and("marketSnapshot.netChange").as("netChange")
+                .and("marketSnapshot.lastTradedPrice").as("lastTradedPrice")
         );
 
-        // Fetch raw results
+        // Fetch results
         List<ScanResultDTO> results = mongoTemplate
             .aggregate(aggregation, "signal_states", ScanResultDTO.class)
             .getMappedResults();
-
-        // Compute derived fields in Java
-        results.forEach(SignalHelper::computeDerivedFields);
 
         return results;
     }

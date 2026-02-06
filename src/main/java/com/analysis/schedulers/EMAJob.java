@@ -30,43 +30,45 @@ public class EMAJob {
     private static final Logger log = LoggerFactory.getLogger(EMAJob.class);
 
     private final ScripCache scripCache;
-    private final FivePaisaApiClient executor;
+    private final FivePaisaApiClient apiClient;
     private final EMAService emaService;
     private final AccessTokenService accessTokenService;
 
-    // Fixed thread pool for ~250 scrips
-    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
+    // Increased thread pool for faster processing of 5m data
+    private final ExecutorService executorService = Executors.newFixedThreadPool(15);
 
     public EMAJob(
             ScripCache scripCache,
-            FivePaisaApiClient executor,
+            FivePaisaApiClient apiClient,
             EMAService emaService,
             AccessTokenService accessTokenService) {
 
         this.scripCache = scripCache;
-        this.executor = executor;
+        this.apiClient = apiClient;
         this.emaService = emaService;
         this.accessTokenService = accessTokenService;
     }
 
     public void run() {
 
-        log.info("EMA Job started");
+        log.info("5m EMA Job started");
 
         String accessToken = accessTokenService.getAccessToken();
         if (!StringUtils.hasText(accessToken)) {
-            log.error("EMA Job: Access token missing. Skipping.");
+            log.error("5m EMA Job: Access token missing. Skipping.");
             return;
         }
 
-        String from = LocalDate.now().minusDays(10).toString();
-        String to = LocalDate.now().minusDays(1).toString();
+        // For 5m candles, we need fewer days of history
+        // 3 days gives us ~864 candles (3 days * 288 candles/day) which is enough
+        String from = LocalDate.now().minusDays(3).toString();
+        String to = LocalDate.now().toString();  // Include today for latest data
 
         List<Map.Entry<Integer, ScripInfo>> scripList = new ArrayList<>();
         scripCache.getAllScripEntries().forEach(scripList::add);
 
         int totalScrips = scripList.size();
-        log.info("Processing {} scrips from {} to {}", totalScrips, from, to);
+        log.info("Processing {} scrips with 5m candles from {} to {}", totalScrips, from, to);
 
         CountDownLatch latch = new CountDownLatch(totalScrips);
         AtomicInteger successCount = new AtomicInteger();
@@ -87,7 +89,7 @@ public class EMAJob {
                 } catch (Exception e) {
                     failureCount.incrementAndGet();
                     log.error(
-                            "EMA failed for {} ({})",
+                            "5m EMA failed for {} ({})",
                             entry.getValue().getSymbol(),
                             entry.getKey(),
                             e
@@ -96,11 +98,12 @@ public class EMAJob {
                     latch.countDown();
 
                     long remaining = latch.getCount();
-                    if (remaining % 25 == 0) {
+                    if (remaining > 0 && remaining % 25 == 0) {
                         log.info(
-                                "EMA Progress: {}/{} completed",
+                                "5m EMA Progress: {}/{} completed ({}%)",
                                 totalScrips - remaining,
-                                totalScrips
+                                totalScrips,
+                                String.format("%.1f", (totalScrips - remaining) * 100.0 / totalScrips)
                         );
                     }
                 }
@@ -119,7 +122,8 @@ public class EMAJob {
         String symbol = scripInfo.getSymbol();
 
         try {
-            String json = executor.fetch30MinCandles(scripCode, from, to);
+            // Use 5m candles instead of 30m
+            String json = apiClient.fetch5MinCandles(scripCode, from, to);
             emaService.processApiResponse(String.valueOf(scripCode), symbol, json);
 
         } catch (HttpClientErrorException.TooManyRequests e) {
@@ -127,9 +131,9 @@ public class EMAJob {
             log.warn("Rate limit hit for {} ({}). Retrying once...", symbol, scripCode);
 
             try {
-                Thread.sleep(2000);
+                Thread.sleep(3000);  // Increased delay for rate limiting
 
-                String json = executor.fetch30MinCandles(scripCode, from, to);
+                String json = apiClient.fetch5MinCandles(scripCode, from, to);
                 emaService.processApiResponse(String.valueOf(scripCode), symbol, json);
 
             } catch (InterruptedException ie) {
@@ -147,7 +151,7 @@ public class EMAJob {
 
         } catch (Exception e) {
             log.error(
-                    "EMA processing failed for {} ({}): {}",
+                    "5m EMA processing failed for {} ({}): {}",
                     symbol,
                     scripCode,
                     e.getMessage()
@@ -161,26 +165,35 @@ public class EMAJob {
             AtomicInteger failureCount) {
 
         try {
-            boolean completed = latch.await(10, TimeUnit.MINUTES);
+            // Increased timeout for 5m data (more candles to process)
+            boolean completed = latch.await(15, TimeUnit.MINUTES);
 
             if (!completed) {
-                log.warn("EMA Job timeout! {} tasks still pending", latch.getCount());
+                log.warn("5m EMA Job timeout! {} tasks still pending", latch.getCount());
             }
 
             log.info(
-                    "EMA Job completed. Success: {}, Failed: {}",
+                    "5m EMA Job completed. Success: {}, Failed: {}",
                     successCount.get(),
                     failureCount.get()
             );
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("EMA Job interrupted", e);
+            log.error("5m EMA Job interrupted", e);
         }
     }
 
     @PreDestroy
     public void cleanup() {
         executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

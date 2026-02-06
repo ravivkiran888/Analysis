@@ -1,54 +1,33 @@
 package com.analysis.dto;
 
-import java.math.BigDecimal;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.time.Instant;
 
-import com.analysis.SignalState;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import lombok.Data;
-
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ScanResultDTO {
-
-	 @JsonIgnore
+    
+    // From signal_states
     private String scripCode;
     private String symbol;
-    private SignalState signalState;
-
-    private BigDecimal close;
-    private BigDecimal vwap;
-    @JsonIgnore
-    private BigDecimal volume;
-
-    private BigDecimal ema20;
-    private BigDecimal ema50;
-
-    @JsonIgnore
-    private BigDecimal lastVolume;    
-    @JsonIgnore
-    private BigDecimal avgVolume20;   
-
-    private BigDecimal volumeRatio;
-    private String trend;
-
-    @JsonProperty("lastVolume")
-    private String lastVolumeFormatted;
-    @JsonProperty("avgVolume")
-    private String avgVolume20Formatted;
+    private String signalState;
+    private String sector;
     
+    // From vwap_values (only updatedAt)
+    private Instant vwapUpdatedAt;
     
-    @JsonProperty("currentVolume")
-    private String currentVolume;
-    
-    @JsonFormat(shape = JsonFormat.Shape.STRING)
-    private Instant updatedAt;
-    
-    private String sector = "UNKNOWN";
-
-    public String getSector() {
-        return sector == null ? "UNKNOWN" : sector;
-    }
+    // From market_snapshots
+    private Double open;
+    private Double high;
+    private Double low;
+    private Double close;
+    private Long volume;
+    private Double netChange;
+    private Double lastTradedPrice;
 }

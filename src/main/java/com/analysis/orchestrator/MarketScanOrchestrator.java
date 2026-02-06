@@ -4,6 +4,7 @@ package com.analysis.orchestrator;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.analysis.jobs.MarketSnapshotJob;
 import com.analysis.jobs.SignalScannerJob;
 import com.analysis.jobs.VWAPJob;
 import com.analysis.schedulers.EMAJob;
@@ -17,11 +18,13 @@ public class MarketScanOrchestrator {
     private final VWAPJob vwapJob;
     private final EMAJob emaJob;
     private final SignalScannerJob signalScannerJob;
+    private final MarketSnapshotJob marketSnapshotJob;
 
-    public MarketScanOrchestrator(VWAPJob vwapJob, EMAJob emaJob,SignalScannerJob signalScannerJob) {
+    public MarketScanOrchestrator(VWAPJob vwapJob, EMAJob emaJob,SignalScannerJob signalScannerJob,  MarketSnapshotJob marketSnapshotJob) {
         this.vwapJob = vwapJob;
         this.emaJob = emaJob;
         this.signalScannerJob = signalScannerJob;
+        this.marketSnapshotJob = marketSnapshotJob;
     }
 
     @Scheduled(cron = "0 */10 9-15 * * MON-FRI", zone = "Asia/Kolkata")
@@ -33,15 +36,19 @@ public class MarketScanOrchestrator {
 
         boolean vwapOk = runJob("VWAP", vwapJob::run);
         boolean emaOk  = runJob("EMA",  emaJob::run);
-        boolean sigOk  = runJob("SIGNAL", signalScannerJob::run);
-
+        boolean marketSnapOk  = runJob("MARKET_SNAP", marketSnapshotJob::run);
+       boolean sigOk  = runJob("SIGNAL", signalScannerJob::run);
+        
+        
         log.info(
-            "Market Scan completed in {} ms | VWAP={} EMA={} SIGNAL={}",
+            "Market Scan completed in {} ms | VWAP={} EMA={} SIGNAL={} MARKET_SNAP={}",
             System.currentTimeMillis() - start,
             status(vwapOk),
             status(emaOk),
-            status(sigOk)
+            status(sigOk),
+            status(marketSnapOk)
         );
+        
     }
 
     private boolean runJob(String name, Runnable job) {

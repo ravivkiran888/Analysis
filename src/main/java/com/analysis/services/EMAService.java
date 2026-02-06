@@ -5,6 +5,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDateTime;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -19,14 +21,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class EMAService {
 
-    private static final String INTERVAL = "30m";
-    private static final String COLLECTION = "ema_30m";
+    private static final Logger log = LoggerFactory.getLogger(EMAService.class);
 
-    private static final int EMA_FAST = 20;
-    private static final int EMA_SLOW = 50;
-    private static final int VOLUME_LOOKBACK = 20;
-    private static final BigDecimal VOLUME_MULTIPLIER =
-            BigDecimal.valueOf(1.5);
+	
+	private static final String INTERVAL = "5m";  // Changed from 30m to 5m
+    private static final String COLLECTION = "ema_5m";  // Changed collection name
+
+    // Adjusted EMA periods for 5m timeframe (more responsive)
+    private static final int EMA_FAST = 20;      // 20 periods = 100 minutes
+    private static final int EMA_SLOW = 50;      // 50 periods = 250 minutes (~4 hours)
+    
+    // Volume lookback adjusted for higher frequency
+    private static final int VOLUME_LOOKBACK = 20;  // Last 20 periods = 100 minutes
+    
+    // Slightly higher multiplier for 5m (more noise in smaller timeframes)
+    private static final BigDecimal VOLUME_MULTIPLIER = BigDecimal.valueOf(2.0);
 
     private final MongoTemplate mongoTemplate;
     private final ObjectMapper objectMapper;
@@ -47,8 +56,12 @@ public class EMAService {
                             .path("data")
                             .path("candles");
 
-        if (candles.size() < EMA_SLOW) {
-            return; // not enough candles
+        // Need more candles for EMA calculations since we're using shorter timeframe
+        int minCandlesNeeded = Math.max(EMA_SLOW, VOLUME_LOOKBACK) + 10;
+        if (candles.size() < minCandlesNeeded) {
+            log.warn("Not enough candles for {} ({}). Need: {}, Have: {}", 
+                    symbol, scripCode, minCandlesNeeded, candles.size());
+            return;
         }
 
         BigDecimal ema20 = null;
@@ -58,8 +71,11 @@ public class EMAService {
         BigDecimal avgVolume20 = null;
 
         LocalDateTime lastCandleTime = null;
-
-        for (int i = 0; i < candles.size(); i++) {
+        
+        // Use last 2-3 days of data for 5m candles
+        int startIdx = Math.max(0, candles.size() - 300); // ~300 candles = ~25 hours
+        
+        for (int i = startIdx; i < candles.size(); i++) {
 
             JsonNode c = candles.get(i);
 
@@ -74,12 +90,13 @@ public class EMAService {
 
             lastVolume = volume;
 
-            if (i == EMA_FAST - 1) {
-                ema20 = sma(candles, EMA_FAST, i);
+            // Initialize EMA with SMA when we have enough data
+            if (i == startIdx + EMA_FAST - 1) {
+                ema20 = sma(candles, EMA_FAST, i, startIdx);
             }
 
-            if (i == EMA_SLOW - 1) {
-                ema50 = sma(candles, EMA_SLOW, i);
+            if (i == startIdx + EMA_SLOW - 1) {
+                ema50 = sma(candles, EMA_SLOW, i, startIdx);
             }
 
             if (ema20 != null) {
@@ -90,12 +107,13 @@ public class EMAService {
                 ema50 = EMACalculator.calculate(close, ema50, EMA_SLOW);
             }
 
-            if (i >= VOLUME_LOOKBACK - 1) {
-                avgVolume20 = avgVolume(candles, VOLUME_LOOKBACK, i);
+            if (i >= startIdx + VOLUME_LOOKBACK - 1) {
+                avgVolume20 = avgVolume(candles, VOLUME_LOOKBACK, i, startIdx);
             }
         }
 
         if (ema20 == null || ema50 == null || avgVolume20 == null) {
+            log.warn("EMA calculation incomplete for {} ({})", symbol, scripCode);
             return;
         }
 
@@ -114,19 +132,31 @@ public class EMAService {
                 volumeExpansion,
                 lastCandleTime
         );
+        
+        log.debug("Updated 5m EMA for {}: EMA20={}, EMA50={}, VolExp={}", 
+                symbol, ema20.setScale(2, RoundingMode.HALF_UP), 
+                ema50.setScale(2, RoundingMode.HALF_UP), volumeExpansion);
     }
 
     /* ================== HELPERS ================== */
 
-    private BigDecimal sma(JsonNode candles, int period, int endIndex) {
+    private BigDecimal sma(JsonNode candles, int period, int endIndex, int startIdx) {
         BigDecimal sum = BigDecimal.ZERO;
-        for (int i = endIndex - period + 1; i <= endIndex; i++) {
+        int actualStart = Math.max(startIdx, endIndex - period + 1);
+        
+        for (int i = actualStart; i <= endIndex; i++) {
             sum = sum.add(
                     candles.get(i).get(4).decimalValue()
             );
         }
+        
+        int count = endIndex - actualStart + 1;
+        if (count < period) {
+            log.warn("Incomplete SMA calculation: need {}, have {}", period, count);
+        }
+        
         return sum.divide(
-                BigDecimal.valueOf(period),
+                BigDecimal.valueOf(count),
                 4,
                 RoundingMode.HALF_UP
         );
@@ -135,16 +165,21 @@ public class EMAService {
     private BigDecimal avgVolume(
             JsonNode candles,
             int period,
-            int endIndex
+            int endIndex,
+            int startIdx
     ) {
         BigDecimal sum = BigDecimal.ZERO;
-        for (int i = endIndex - period + 1; i <= endIndex; i++) {
+        int actualStart = Math.max(startIdx, endIndex - period + 1);
+        
+        for (int i = actualStart; i <= endIndex; i++) {
             sum = sum.add(
                     candles.get(i).get(5).decimalValue()
             );
         }
+        
+        int count = endIndex - actualStart + 1;
         return sum.divide(
-                BigDecimal.valueOf(period),
+                BigDecimal.valueOf(count),
                 2,
                 RoundingMode.HALF_UP
         );

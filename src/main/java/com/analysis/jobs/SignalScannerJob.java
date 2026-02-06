@@ -167,7 +167,7 @@ public class SignalScannerJob {
         return mongoTemplate.findOne(
                 Query.query(Criteria.where("ScripCode").is(scripCode)),
                 EMAValue.class,
-                "ema_30m"
+                "ema_5m"
         );
     }
 

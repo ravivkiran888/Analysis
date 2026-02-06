@@ -15,7 +15,7 @@ import lombok.Setter;
 @Getter
 
 @Data
-@Document(collection = "ema_30m")
+@Document(collection = "ema_5m")
 public class EMAValue {
 
     @Id
