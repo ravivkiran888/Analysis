@@ -44,7 +44,7 @@ public class TrendScannerService {
                 .and("Sector").as("sector")
                 
                 // From vwap_values (ONLY updatedAt)
-                .and("vwap.updatedAt").as("vwapUpdatedAt") // Renamed for clarity
+                .and("evaluatedAt").as("evaluatedAt") // Renamed for clarity
                 
                 // From market_snapshots
                 .and("marketSnapshot.open").as("open")

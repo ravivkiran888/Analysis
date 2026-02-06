@@ -19,8 +19,8 @@ public class ScanResultDTO {
     private String signalState;
     private String sector;
     
-    // From vwap_values (only updatedAt)
-    private Instant vwapUpdatedAt;
+    
+    private Instant evaluatedAt;
     
     // From market_snapshots
     private Double open;
