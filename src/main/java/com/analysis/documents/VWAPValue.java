@@ -37,4 +37,8 @@ public class VWAPValue {
     
     @Field("Sector")
     private String sector;
+    
+    private BigDecimal vwapSlope;
+    
+    private BigDecimal volumeExpansion;
 }

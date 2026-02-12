@@ -27,7 +27,7 @@ public class MarketScanOrchestrator {
         this.marketSnapshotJob = marketSnapshotJob;
     }
 
-    @Scheduled(cron = "0 */10 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 */13 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     public void orchestrate() {
 
         log.info("Market Scan Orchestrator started");

@@ -2,8 +2,8 @@ package com.analysis.services;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.LocalDateTime;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 import org.springframework.stereotype.Component;
 
@@ -15,11 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Component
 public class VWAPCalculator {
 
-    private static final int INTERVAL_MINUTES = 5;
-
-    // Reject last candle if volume < 70% of previous
-    private static final BigDecimal LAST_CANDLE_VOLUME_RATIO =
-            BigDecimal.valueOf(0.70);
+    private static final int VOLUME_LOOKBACK = 10;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -52,33 +48,31 @@ public class VWAPCalculator {
         if (candles == null || candles.isEmpty()) {
             return;
         }
-        
-        BigDecimal lastClose = null;
-        BigDecimal totalTradedVolume = null;
-
 
         BigDecimal cumulativeTPV = BigDecimal.ZERO;
         BigDecimal cumulativeVolume = BigDecimal.ZERO;
+        BigDecimal previousVWAP = null;
+
+        Deque<BigDecimal> recentVolumes = new ArrayDeque<>();
+
+        BigDecimal lastClose = null;
+        BigDecimal currentVWAP = null;
+        BigDecimal vwapSlope = BigDecimal.ZERO;
+        BigDecimal volumeExpansion = BigDecimal.ZERO;
 
         for (int i = 0; i < candles.size(); i++) {
 
-            if (!isCompleteCandle(candles, i)) {
-                continue;
-            }
-
             JsonNode c = candles.get(i);
 
-            // candle format:
             // [ time, open, high, low, close, volume ]
             BigDecimal high   = c.get(2).decimalValue();
             BigDecimal low    = c.get(3).decimalValue();
             BigDecimal close  = c.get(4).decimalValue();
             BigDecimal volume = c.get(5).decimalValue();
-            
-            lastClose = close; 
-            totalTradedVolume = volume;
 
+            lastClose = close;
 
+            // Typical price
             BigDecimal typicalPrice =
                     high.add(low).add(close)
                         .divide(BigDecimal.valueOf(3),
@@ -91,103 +85,67 @@ public class VWAPCalculator {
 
             cumulativeVolume =
                     cumulativeVolume.add(volume);
+
+            if (cumulativeVolume.signum() > 0) {
+
+                currentVWAP =
+                        cumulativeTPV.divide(
+                                cumulativeVolume,
+                                4,
+                                RoundingMode.HALF_UP);
+
+                if (previousVWAP != null) {
+                    vwapSlope = currentVWAP.subtract(previousVWAP);
+                }
+
+                previousVWAP = currentVWAP;
+            }
+
+            // Rolling volume window
+            recentVolumes.add(volume);
+            if (recentVolumes.size() > VOLUME_LOOKBACK) {
+                recentVolumes.pollFirst();
+            }
+
+            if (recentVolumes.size() == VOLUME_LOOKBACK) {
+
+                BigDecimal avgVolume = recentVolumes.stream()
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .divide(BigDecimal.valueOf(VOLUME_LOOKBACK),
+                                4,
+                                RoundingMode.HALF_UP);
+
+                if (avgVolume.signum() > 0) {
+                    volumeExpansion =
+                            volume.divide(avgVolume,
+                                    4,
+                                    RoundingMode.HALF_UP);
+                }
+            }
+        }
+
+        if (currentVWAP == null) {
+            return;
         }
 
         ScripInfo info = scripCache.getScripInfo(scripCode);
-        String symbol = info.getSymbol();
-        String sector = info.getSector();
 
-        // ---- VWAP ----
-        if (cumulativeVolume.signum() > 0) {
+        vwapService.saveOrUpdateVWAP(
+                String.valueOf(scripCode),
+                info.getSymbol(),
+                currentVWAP,
+                lastClose,
+                cumulativeVolume,   // cumulative session volume
+                info.getSector(),
+                vwapSlope,
+                volumeExpansion
+        );
 
-            BigDecimal vwap =
-                    cumulativeTPV.divide(
-                            cumulativeVolume,
-                            2,
-                            RoundingMode.HALF_UP);
-
-            
-            
-            vwapService.saveOrUpdateVWAP(
-                    String.valueOf(scripCode),
-                    symbol,
-                    vwap,
-                    lastClose,
-                    totalTradedVolume,
-                    sector
-            );
-        }
-
-        // ---- RSI (TradingView-style) ----
+        // Pass same candle set to RSI (synchronized)
         rsiService.calculateAndSaveRSI(
-        		String.valueOf(scripCode),
-                symbol,
+                String.valueOf(scripCode),
+                info.getSymbol(),
                 candles
         );
-    }
-
-    /**
-     * Candle is complete if:
-     * - Next candle exists exactly +5 minutes
-     * - OR (last candle) volume is >= 70% of previous
-     */
-    private boolean isCompleteCandle(
-            JsonNode candles,
-            int index) {
-
-        // Last candle
-        if (index == candles.size() - 1) {
-            return isLastVolumeValid(candles, index);
-        }
-
-        LocalDateTime t1 =
-                LocalDateTime.parse(
-                        candles.get(index)
-                               .get(0)
-                               .asText());
-
-        LocalDateTime t2 =
-                LocalDateTime.parse(
-                        candles.get(index + 1)
-                               .get(0)
-                               .asText());
-
-        return Duration.between(t1, t2)
-                       .toMinutes() == INTERVAL_MINUTES;
-    }
-
-    /**
-     * Validate partial last candle using volume ratio
-     */
-    private boolean isLastVolumeValid(
-            JsonNode candles,
-            int index) {
-
-        if (index == 0) {
-            return false;
-        }
-
-        BigDecimal lastVolume =
-                candles.get(index)
-                       .get(5)
-                       .decimalValue();
-
-        BigDecimal prevVolume =
-                candles.get(index - 1)
-                       .get(5)
-                       .decimalValue();
-
-        if (prevVolume.signum() == 0) {
-            return false;
-        }
-
-        BigDecimal ratio =
-                lastVolume.divide(
-                        prevVolume,
-                        4,
-                        RoundingMode.HALF_UP);
-
-        return ratio.compareTo(
-                LAST_CANDLE_VOLUME_RATIO) >= 0;
     }
 }

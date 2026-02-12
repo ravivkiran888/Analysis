@@ -12,7 +12,9 @@ public interface VWAPService {
             BigDecimal vwap,
             BigDecimal close,
             BigDecimal volume,
-            String sector
+            String sector,
+            BigDecimal vwapSlope,
+            BigDecimal volumeExpansion
            
     );
 }

@@ -101,7 +101,9 @@ public class SignalScannerJob {
                         ema.getEma50(),
                         vwap.getClose(),
                         vwap.getVwap(),
-                        rsi.getRsi()
+                        rsi.getRsi(),
+                        vwap.getVwapSlope(),
+                        vwap.getVolumeExpansion()
                 );
 
         saveSignal(code, symbol, sector, newState);
@@ -114,25 +116,36 @@ public class SignalScannerJob {
             BigDecimal ema50,
             BigDecimal close,
             BigDecimal vwap,
-            BigDecimal rsi) {
+            BigDecimal rsi,
+            BigDecimal vwapSlope,
+            BigDecimal volumeExpansion) {
 
-        // 1️⃣ Trend (30m)
-        if (ema20.compareTo(ema50) <= 0) {
-            return SignalState.WAIT;
-        }
+      
+    	// 1️⃣ Price above VWAP
+    	if (close.compareTo(vwap) <= 0) {
+    	    return SignalState.WAIT;
+    	}
 
-        // 2️⃣ VWAP confirmation (5m)
-        if (close.compareTo(vwap) <= 0) {
-            return SignalState.WATCH;
-        }
+    	// 2️⃣ VWAP slope (slightly relaxed)
+    	if (vwapSlope.compareTo(BigDecimal.valueOf(-0.02)) < 0) {
+    	    return SignalState.WATCH;
+    	}
 
-        // 3️⃣ Momentum confirmation
-        if (rsi.compareTo(BigDecimal.valueOf(40)) <= 0) {
-            return SignalState.WATCH;
-        }
+    	// 3️⃣ RSI strength
+    	if (rsi.compareTo(BigDecimal.valueOf(55)) <= 0) {
+    	    return SignalState.WATCH;
+    	}
 
-        return SignalState.ENTRY_READY;
+    	// 4️⃣ Volume expansion
+    	if (volumeExpansion.compareTo(BigDecimal.valueOf(1.5)) <= 0) {
+    	    return SignalState.WATCH;
+    	}
+
+    	return SignalState.ENTRY_READY;
+
+    	
     }
+
 
     /* ================= SINGLE WRITE ================= */
 
