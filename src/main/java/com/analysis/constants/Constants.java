@@ -25,5 +25,11 @@ public class Constants {
 	public static final String VOLUME_EXPANSION = "volumeExpansion";
 	public static final String SIGNAL = "signal";
 	
+	public static final String SCRIPT_CODE = "scripCode";
+
+	 // MarketSnapshot API configuration
+    public static final String MARKET_SNAPSHOT_URL = "/VendorsAPI/Service1.svc/v1/MarketSnapshot";
+    public static final int MARKET_SNAPSHOT_BATCH_SIZE = 50;
+    public static final String DEFAULT_CLIENT_CODE = "50407824"; // Make this configurable
 
 }

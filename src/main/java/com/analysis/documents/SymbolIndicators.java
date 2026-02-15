@@ -38,4 +38,16 @@ public class SymbolIndicators {
 
     // Signal: "ENTRY_READY" or "WAIT"
     private String signal;
+    
+    
+    
+    // Market snapshot fields
+    private BigDecimal dayHigh;
+    private BigDecimal dayLow;
+    private BigDecimal dayOpen;
+    private BigDecimal lastTradedPrice;
+    private BigDecimal dayChange;
+    
+    // ✅ Add this one field
+    private Long totalDayVolume;  // Today's total volume from MarketSnapshot
 }

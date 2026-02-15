@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import com.analysis.jobs.MarketSnapshotJob;
 import com.analysis.scanner.SymbolScanner;
 
 import lombok.extern.slf4j.Slf4j;
@@ -12,13 +13,16 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class OrchestratorTestRunner implements CommandLineRunner {
 
-	private final SymbolScanner orchestrator;
+	private final SymbolScanner symbolScanner;
+	
+	private final MarketSnapshotJob marketSnapshotJob;
 
-	@Value("${runscanner:false}")
+	@Value("${runindicatorscanner:false}")
 	private boolean enabled;
 
-	public OrchestratorTestRunner(SymbolScanner orchestrator) {
-		this.orchestrator = orchestrator;
+	public OrchestratorTestRunner(SymbolScanner symbolScanner , MarketSnapshotJob marketSnapshotJob) {
+		this.symbolScanner = symbolScanner;
+		this.marketSnapshotJob = marketSnapshotJob;
 	}
 
 	@Override
@@ -34,7 +38,9 @@ public class OrchestratorTestRunner implements CommandLineRunner {
 		long start = System.currentTimeMillis();
 
 		try {
-			orchestrator.scan();
+			symbolScanner.scan();
+			marketSnapshotJob.run();
+			
 		} catch (Exception e) {
 			log.error("Manual orchestrator execution FAILED", e);
 		}

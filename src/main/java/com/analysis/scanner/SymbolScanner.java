@@ -1,5 +1,6 @@
 package com.analysis.scanner;
 
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -15,13 +16,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.analysis.apicalls.APIClient;
@@ -94,7 +93,7 @@ public class SymbolScanner {
         log.info("Initialized thread pool with {} threads", THREAD_POOL_SIZE);
     }
 
-    @Scheduled(cron = "0 */5 9-15 * * MON-FRI")
+
     public void scan() {
         // Use IST timezone for Indian market hours
         LocalTime now = LocalTime.now(IST_ZONE);
@@ -296,7 +295,7 @@ public class SymbolScanner {
             BigDecimal ema20, BigDecimal ema50, BigDecimal vwapSlope, BigDecimal rsi,
             String signal) {
 
-        Query query = new Query(Criteria.where("scripCode").is(String.valueOf(scripCode)));
+        Query query = new Query(Criteria.where(Constants.SCRIPT_CODE).is(String.valueOf(scripCode)));
         
         Update update = new Update()
                 .set("symbol", symbol)
