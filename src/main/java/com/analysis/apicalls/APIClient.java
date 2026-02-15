@@ -45,7 +45,7 @@ public class APIClient {
         String url = String.format("%s/V2/historical/N/C/%d/%s?from=%s&end=%s",
                 Constants.BASE_URL, scripCode, interval, from, end);
         
-        System.out.println(url);
+      
 
         String accessToken = accessTokenService.getAccessToken();
 
