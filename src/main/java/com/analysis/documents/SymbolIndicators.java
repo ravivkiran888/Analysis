@@ -48,6 +48,10 @@ public class SymbolIndicators {
     private BigDecimal lastTradedPrice;
     private BigDecimal dayChange;
     
-    // ✅ Add this one field
     private Long totalDayVolume;  // Today's total volume from MarketSnapshot
+    
+    private String levelInsights;
+
+
+    
 }
