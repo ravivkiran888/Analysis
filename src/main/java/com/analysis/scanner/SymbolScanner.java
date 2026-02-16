@@ -51,13 +51,17 @@ public class SymbolScanner {
     // Early scanner thresholds
     private static final BigDecimal EARLY_VOLUME_THRESHOLD = new BigDecimal("1.5");
 
-    // Full scanner thresholds
+    // Full scanner thresholds (original five)
     private static final BigDecimal PRICE_ABOVE_VWAP_PERCENT = new BigDecimal("0.002");
-    private static final BigDecimal EMA_ALIGNMENT_PERCENT = new BigDecimal("0.001");
     private static final BigDecimal VWAP_SLOPE_THRESHOLD = new BigDecimal("0.0005");
     private static final BigDecimal RSI_LOWER = new BigDecimal("58");
     private static final BigDecimal RSI_UPPER = new BigDecimal("75");
     private static final BigDecimal VOLUME_THRESHOLD = new BigDecimal("1.7");
+
+    // Opening range: first 30 minutes = 6 candles (9:15 to 9:40)
+    private static final int OPENING_RANGE_CANDLES = 6;
+    // Multiplier for last hour volume vs average hourly volume
+    private static final BigDecimal LAST_HOUR_VOLUME_FACTOR = new BigDecimal("1.2");
 
     private final APIClient apiClient;
     private final TradingCalculator calculator;
@@ -190,7 +194,7 @@ public class SymbolScanner {
         storeIndicators(
                 scripCode, symbol, candleCount, Constants.EARLY,
                 latest.getClose(), vwap, volumeRatio,
-                null, null, null, null, null, // no level insights for early scans (can be added later)
+                null, null, null, null, null,
                 signal);
     }
 
@@ -203,44 +207,117 @@ public class SymbolScanner {
         List<CandleData> candles = parseCandles(candlesNode);
         CandleData latest = candles.get(candles.size() - 1);
 
+        // --- Original indicators ---
         BigDecimal vwap = calculator.calculateVWAP(candles);
         BigDecimal vwapSlope = calculator.calculateVWAPSlope(candles);
         BigDecimal ema20 = calculator.calculateEMA(candles, 20);
-        BigDecimal ema50 = calculator.calculateEMA(candles, 50);
         BigDecimal rsi = calculator.calculateRSI(candles, 14);
         BigDecimal volumeExp = calculator.calculateVolumeExpansion(candles, 10);
 
+        // --- Opening Range Break ---
+        boolean openingRangeBreak = false;
+        if (candles.size() >= OPENING_RANGE_CANDLES) {
+            BigDecimal openingRangeHigh = candles.subList(0, OPENING_RANGE_CANDLES).stream()
+                    .map(CandleData::getHigh)
+                    .max(BigDecimal::compareTo)
+                    .orElse(BigDecimal.ZERO);
+            // Price breaks above opening range high with volume confirmation
+            if (latest.getClose().compareTo(openingRangeHigh) > 0 &&
+                volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0) {
+                openingRangeBreak = true;
+            }
+        }
+
+        // --- Normalized Last Hour Volume ---
+        boolean lastHourVolumeStrong = false;
+        if (candles.size() >= 12) {
+            long lastHourVolume = candles.subList(candles.size() - 12, candles.size()).stream()
+                    .mapToLong(CandleData::getVolume).sum();
+            // Average 5-min volume over all candles (excluding last hour to avoid bias? we use all)
+            double avg5minVolume = candles.stream()
+                    .mapToLong(CandleData::getVolume)
+                    .average()
+                    .orElse(0);
+            double avgHourlyVolume = avg5minVolume * 12;
+            if (lastHourVolume > avgHourlyVolume * LAST_HOUR_VOLUME_FACTOR.doubleValue()) {
+                lastHourVolumeStrong = true;
+            }
+        }
+
+        // --- 15-minute VWAP confirmation ---
+        boolean above15MinVWAP = false;
+        if (candles.size() >= 3) {
+            // Aggregate every 3 candles into a 15-minute candle
+            List<CandleData> candles15 = aggregateTo15Min(candles);
+            BigDecimal vwap15 = calculator.calculateVWAP(candles15);
+            if (vwap15 != null && latest.getClose().compareTo(vwap15) > 0) {
+                above15MinVWAP = true;
+            }
+        }
+
+        // --- Count all conditions (original 5 + new 3) ---
         int conditionsMet = 0;
+
+        // 1. Price above VWAP by 0.2%
         BigDecimal priceVsVWAP = latest.getClose().subtract(vwap)
                 .divide(vwap, 6, RoundingMode.HALF_UP);
         if (priceVsVWAP.compareTo(PRICE_ABOVE_VWAP_PERCENT) >= 0) conditionsMet++;
 
-        if (ema20 != null && ema50 != null) {
-            BigDecimal emaDiff = ema20.subtract(ema50).divide(ema50, 6, RoundingMode.HALF_UP);
-            if (emaDiff.compareTo(EMA_ALIGNMENT_PERCENT) >= 0) conditionsMet++;
-        }
+        // 2. Price above EMA20
+        if (ema20 != null && latest.getClose().compareTo(ema20) > 0) conditionsMet++;
 
+        // 3. VWAP slope > threshold
         if (vwapSlope != null && vwapSlope.compareTo(VWAP_SLOPE_THRESHOLD) > 0) conditionsMet++;
+
+        // 4. RSI between 58 and 75
         if (rsi != null && rsi.compareTo(RSI_LOWER) >= 0 && rsi.compareTo(RSI_UPPER) <= 0) conditionsMet++;
+
+        // 5. Volume expansion > 1.7x
         if (volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0) conditionsMet++;
 
-        String signal = (conditionsMet >= 4) ? Constants.ENTRY_READY : Constants.WAIT;
+        // 6. Opening range break
+        if (openingRangeBreak) conditionsMet++;
 
-        // --- Generate support/resistance levels from the day's candles ---
+        // 7. Last hour volume strong (normalized)
+        if (lastHourVolumeStrong) conditionsMet++;
+
+        // 8. Above 15-minute VWAP
+        if (above15MinVWAP) conditionsMet++;
+
+        // Set threshold – adjust as needed (e.g., 6 out of 8)
+        int requiredConditions = 6; // you can change this
+        String signal = (conditionsMet >= requiredConditions) ? Constants.ENTRY_READY : Constants.WAIT;
+
+        // --- Generate support/resistance levels ---
         String levelInsights = generateLevels(candles);
 
         storeIndicators(
                 scripCode, symbol, candleCount, Constants.FULL,
                 latest.getClose(), vwap, volumeExp,
-                ema20, ema50, vwapSlope, rsi,
+                ema20, null, vwapSlope, rsi,
                 levelInsights,
                 signal);
     }
 
+    // -------------------- HELPER: Aggregate to 15-minute candles --------------------
+    private List<CandleData> aggregateTo15Min(List<CandleData> candles5min) {
+        List<CandleData> result = new ArrayList<>();
+        int i = 0;
+        while (i + 2 < candles5min.size()) {
+            List<CandleData> group = candles5min.subList(i, i + 3);
+            LocalDateTime timestamp = group.get(2).getTimestamp(); // use last candle's time
+            BigDecimal open = group.get(0).getOpen();
+            BigDecimal high = group.stream().map(CandleData::getHigh).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            BigDecimal low = group.stream().map(CandleData::getLow).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            BigDecimal close = group.get(2).getClose();
+            long volume = group.stream().mapToLong(CandleData::getVolume).sum();
+            result.add(new CandleData(timestamp, open, high, low, close, volume));
+            i += 3;
+        }
+        return result;
+    }
+
     // -------------------- LEVEL GENERATION --------------------
-    /**
-     * Generates support/resistance levels with actionable commentary.
-     */
     private String generateLevels(List<CandleData> candles) {
         if (candles == null || candles.isEmpty()) {
             return "No intraday data available.";
@@ -264,9 +341,9 @@ public class SymbolScanner {
         BigDecimal s2 = pivot.subtract(dayHigh.subtract(dayLow))
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // Identify round numbers (e.g., 82.00, 81.00) that may act as psychological levels
-        BigDecimal roundResistance = new BigDecimal("82.00"); // Could be made dynamic based on price range
-        BigDecimal roundSupport = new BigDecimal("81.40");   // Example – adjust per stock
+        // Identify round numbers (example – could be made dynamic)
+        BigDecimal roundResistance = new BigDecimal("82.00");
+        BigDecimal roundSupport = new BigDecimal("81.40");
 
         StringBuilder sb = new StringBuilder();
         sb.append("📊 **Key Levels for Next Session**\n\n");
@@ -319,7 +396,7 @@ public class SymbolScanner {
                 .set("price", price)
                 .set("vwap", vwap)
                 .set("volumeExpansion", volumeExpansion)
-                .set("levelInsights", levelInsights)    // new field
+                .set("levelInsights", levelInsights)
                 .set("signal", signal);
 
         if (Constants.FULL.equals(mode)) {
