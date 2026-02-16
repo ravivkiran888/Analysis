@@ -23,6 +23,7 @@ public class Constants {
 	public static final String FULL = "FULL";
 	
 	public static final String VOLUME_EXPANSION = "volumeExpansion";
+	public static final String TOTAL_DAY_VOLUME = "totalDayVolume";
 	public static final String SIGNAL = "signal";
 	
 	public static final String SCRIPT_CODE = "scripCode";

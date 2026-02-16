@@ -260,7 +260,7 @@ public class MarketSnapshotJob {
                     .set("dayOpen", parseBigDecimal(data.getOpen()))
                     .set("lastTradedPrice", parseBigDecimal(data.getLastTradedPrice()))
                     .set("dayChange", parseBigDecimal(data.getNetChange()))
-                    .set("totalDayVolume", parseLong(data.getVolume()))
+                    .set(Constants.TOTAL_DAY_VOLUME, parseLong(data.getVolume()))
                     .set("snapshotTimestamp", Instant.now());
 
             var result = mongoTemplate.updateFirst(query, update, SymbolIndicators.class);

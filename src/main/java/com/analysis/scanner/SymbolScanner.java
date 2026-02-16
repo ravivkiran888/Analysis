@@ -51,7 +51,7 @@ public class SymbolScanner {
     // Early scanner thresholds
     private static final BigDecimal EARLY_VOLUME_THRESHOLD = new BigDecimal("1.5");
 
-    // Full scanner thresholds (original five)
+    // Full scanner thresholds
     private static final BigDecimal PRICE_ABOVE_VWAP_PERCENT = new BigDecimal("0.002");
     private static final BigDecimal VWAP_SLOPE_THRESHOLD = new BigDecimal("0.0005");
     private static final BigDecimal RSI_LOWER = new BigDecimal("58");
@@ -194,7 +194,8 @@ public class SymbolScanner {
         storeIndicators(
                 scripCode, symbol, candleCount, Constants.EARLY,
                 latest.getClose(), vwap, volumeRatio,
-                null, null, null, null, null,
+                null, null, null, null,
+                null, null,
                 signal);
     }
 
@@ -221,7 +222,6 @@ public class SymbolScanner {
                     .map(CandleData::getHigh)
                     .max(BigDecimal::compareTo)
                     .orElse(BigDecimal.ZERO);
-            // Price breaks above opening range high with volume confirmation
             if (latest.getClose().compareTo(openingRangeHigh) > 0 &&
                 volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0) {
                 openingRangeBreak = true;
@@ -233,7 +233,6 @@ public class SymbolScanner {
         if (candles.size() >= 12) {
             long lastHourVolume = candles.subList(candles.size() - 12, candles.size()).stream()
                     .mapToLong(CandleData::getVolume).sum();
-            // Average 5-min volume over all candles (excluding last hour to avoid bias? we use all)
             double avg5minVolume = candles.stream()
                     .mapToLong(CandleData::getVolume)
                     .average()
@@ -247,7 +246,6 @@ public class SymbolScanner {
         // --- 15-minute VWAP confirmation ---
         boolean above15MinVWAP = false;
         if (candles.size() >= 3) {
-            // Aggregate every 3 candles into a 15-minute candle
             List<CandleData> candles15 = aggregateTo15Min(candles);
             BigDecimal vwap15 = calculator.calculateVWAP(candles15);
             if (vwap15 != null && latest.getClose().compareTo(vwap15) > 0) {
@@ -255,47 +253,41 @@ public class SymbolScanner {
             }
         }
 
-        // --- Count all conditions (original 5 + new 3) ---
+        // --- Count conditions (original 5 + 3 new) ---
         int conditionsMet = 0;
 
-        // 1. Price above VWAP by 0.2%
         BigDecimal priceVsVWAP = latest.getClose().subtract(vwap)
                 .divide(vwap, 6, RoundingMode.HALF_UP);
         if (priceVsVWAP.compareTo(PRICE_ABOVE_VWAP_PERCENT) >= 0) conditionsMet++;
 
-        // 2. Price above EMA20
         if (ema20 != null && latest.getClose().compareTo(ema20) > 0) conditionsMet++;
 
-        // 3. VWAP slope > threshold
         if (vwapSlope != null && vwapSlope.compareTo(VWAP_SLOPE_THRESHOLD) > 0) conditionsMet++;
 
-        // 4. RSI between 58 and 75
         if (rsi != null && rsi.compareTo(RSI_LOWER) >= 0 && rsi.compareTo(RSI_UPPER) <= 0) conditionsMet++;
 
-        // 5. Volume expansion > 1.7x
         if (volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0) conditionsMet++;
 
-        // 6. Opening range break
         if (openingRangeBreak) conditionsMet++;
 
-        // 7. Last hour volume strong (normalized)
         if (lastHourVolumeStrong) conditionsMet++;
 
-        // 8. Above 15-minute VWAP
         if (above15MinVWAP) conditionsMet++;
 
-        // Set threshold – adjust as needed (e.g., 6 out of 8)
-        int requiredConditions = 6; // you can change this
+        int requiredConditions = 6; // adjust as needed
         String signal = (conditionsMet >= requiredConditions) ? Constants.ENTRY_READY : Constants.WAIT;
 
         // --- Generate support/resistance levels ---
         String levelInsights = generateLevels(candles);
 
+        // --- Generate volume commentary in the desired format ---
+        String volumeCommentary = generateVolumeCommentary(candles);
+
         storeIndicators(
                 scripCode, symbol, candleCount, Constants.FULL,
                 latest.getClose(), vwap, volumeExp,
                 ema20, null, vwapSlope, rsi,
-                levelInsights,
+                levelInsights, volumeCommentary,
                 signal);
     }
 
@@ -305,7 +297,7 @@ public class SymbolScanner {
         int i = 0;
         while (i + 2 < candles5min.size()) {
             List<CandleData> group = candles5min.subList(i, i + 3);
-            LocalDateTime timestamp = group.get(2).getTimestamp(); // use last candle's time
+            LocalDateTime timestamp = group.get(2).getTimestamp();
             BigDecimal open = group.get(0).getOpen();
             BigDecimal high = group.stream().map(CandleData::getHigh).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
             BigDecimal low = group.stream().map(CandleData::getLow).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
@@ -317,18 +309,81 @@ public class SymbolScanner {
         return result;
     }
 
+    // -------------------- DYNAMIC VOLUME COMMENTARY (new format) --------------------
+    private String generateVolumeCommentary(List<CandleData> candles) {
+        if (candles == null || candles.isEmpty()) return "No volume data yet.";
+
+        int totalCandles = candles.size();
+        CandleData latest = candles.get(totalCandles - 1);
+        String currentTime = latest.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm"));
+
+        // Find the peak volume candle so far
+        CandleData peakCandle = candles.stream()
+                .max((a, b) -> Long.compare(a.getVolume(), b.getVolume()))
+                .orElse(null);
+
+        // Calculate average volume of all candles so far (including current)
+        double avgVolume = candles.stream()
+                .mapToLong(CandleData::getVolume)
+                .average()
+                .orElse(0);
+
+        double currentRatio = latest.getVolume() / avgVolume;
+
+        // Describe current volume
+        String currentDesc;
+        if (currentRatio < 0.5) {
+            currentDesc = "very light";
+        } else if (currentRatio < 0.8) {
+            currentDesc = "light";
+        } else if (currentRatio < 1.2) {
+            currentDesc = "normal";
+        } else if (currentRatio < 1.5) {
+            currentDesc = "strong";
+        } else {
+            currentDesc = "very strong";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(currentTime).append(": ");
+
+        if (peakCandle != null) {
+            String peakTime = peakCandle.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm"));
+            long peakVol = peakCandle.getVolume();
+
+            if (peakCandle.equals(latest)) {
+                // Current candle is the new peak
+                sb.append(String.format("Current volume is a new high spike! (%s). ",
+                        formatVolume(peakVol)));
+            } else {
+                // Peak was earlier
+                sb.append(String.format("Strong spike at %s (%s) now faded. ",
+                        peakTime, formatVolume(peakVol)));
+            }
+        }
+
+        sb.append(String.format("Current volume %s (%.2fx avg).",
+                currentDesc, currentRatio));
+
+        return sb.toString();
+    }
+
+    private String formatVolume(long vol) {
+        if (vol >= 1_000_000) return String.format("%.1fM", vol / 1_000_000.0);
+        if (vol >= 1_000) return String.format("%.1fK", vol / 1_000.0);
+        return Long.toString(vol);
+    }
+
     // -------------------- LEVEL GENERATION --------------------
     private String generateLevels(List<CandleData> candles) {
         if (candles == null || candles.isEmpty()) {
             return "No intraday data available.";
         }
 
-        // Day high, low, and closing price
         BigDecimal dayHigh = candles.stream().map(CandleData::getHigh).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
         BigDecimal dayLow = candles.stream().map(CandleData::getLow).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
         BigDecimal close = candles.get(candles.size() - 1).getClose();
 
-        // Pivot points
         BigDecimal pivot = dayHigh.add(dayLow).add(close)
                 .divide(new BigDecimal("3"), 2, RoundingMode.HALF_UP);
 
@@ -341,7 +396,6 @@ public class SymbolScanner {
         BigDecimal s2 = pivot.subtract(dayHigh.subtract(dayLow))
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // Identify round numbers (example – could be made dynamic)
         BigDecimal roundResistance = new BigDecimal("82.00");
         BigDecimal roundSupport = new BigDecimal("81.40");
 
@@ -366,7 +420,6 @@ public class SymbolScanner {
               .append(" – Late sell-off low; breakdown would weaken structure\n");
         }
 
-        // Volume insight (last hour)
         long lastHourVolume = candles.stream()
                 .filter(c -> c.getTimestamp().getHour() >= 14)
                 .mapToLong(CandleData::getVolume).sum();
@@ -385,7 +438,7 @@ public class SymbolScanner {
             Integer scripCode, String symbol, int candleCount, String mode,
             BigDecimal price, BigDecimal vwap, BigDecimal volumeExpansion,
             BigDecimal ema20, BigDecimal ema50, BigDecimal vwapSlope, BigDecimal rsi,
-            String levelInsights, String signal) {
+            String levelInsights, String volumeCommentary, String signal) {
 
         Query query = new Query(Criteria.where(Constants.SCRIPT_CODE).is(String.valueOf(scripCode)));
         Update update = new Update()
@@ -397,6 +450,7 @@ public class SymbolScanner {
                 .set("vwap", vwap)
                 .set("volumeExpansion", volumeExpansion)
                 .set("levelInsights", levelInsights)
+                .set("volumeCommentary", volumeCommentary)
                 .set("signal", signal);
 
         if (Constants.FULL.equals(mode)) {

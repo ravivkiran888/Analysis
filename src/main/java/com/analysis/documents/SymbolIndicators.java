@@ -51,6 +51,8 @@ public class SymbolIndicators {
     private Long totalDayVolume;  // Today's total volume from MarketSnapshot
     
     private String levelInsights;
+    
+    private String volumeCommentary;
 
 
     

@@ -21,7 +21,12 @@ public class SignalService {
 
     public List<SymbolIndicators> getEntryReadySymbols() {
         Query query = new Query(Criteria.where(Constants.SIGNAL).is(Constants.ENTRY_READY));
-        query.with(Sort.by(Sort.Direction.DESC, Constants.VOLUME_EXPANSION));
+      
+        query.with(Sort.by(
+        	    Sort.Order.desc("volumeExpansion"),  // recent momentum first
+        	    Sort.Order.desc("totalDayVolume")    // then liquidity
+        	));
+        
         return mongoTemplate.find(query, SymbolIndicators.class);
     }
 }
