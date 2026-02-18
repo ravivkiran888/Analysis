@@ -45,7 +45,7 @@ public class SymbolScanner {
 
     // ===================== CONSTANTS =====================
     private static final int EARLY_MIN_CANDLES = 3;
-    private static final int FULL_SCANNER_MIN_CANDLES = 15;
+    private static final int FULL_SCANNER_MIN_CANDLES = 10;        // Switch to full mode at ~10:05 AM
     private static final int THREAD_POOL_SIZE = 8;
     private static final int SCAN_TIMEOUT_MINUTES = 4;
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
@@ -53,11 +53,11 @@ public class SymbolScanner {
     // Early scanner thresholds
     private static final BigDecimal EARLY_VOLUME_THRESHOLD = new BigDecimal("1.5");
 
-    // Full scanner thresholds
-    private static final BigDecimal PRICE_ABOVE_VWAP_PERCENT = new BigDecimal("0.002"); // 0.2%
-    private static final BigDecimal NORM_SLOPE_THRESHOLD = new BigDecimal("0.000005"); // normalized slope
+    // Full scanner thresholds (relaxed for more signals)
+    private static final BigDecimal PRICE_ABOVE_VWAP_PERCENT = new BigDecimal("0.001");   // 0.1% (was 0.2%)
+    private static final BigDecimal NORM_SLOPE_THRESHOLD = new BigDecimal("0.000001");    // (was 0.000005)
     private static final BigDecimal RSI_LOWER = new BigDecimal("58");
-    private static final BigDecimal VOLUME_THRESHOLD = new BigDecimal("1.7");
+    private static final BigDecimal VOLUME_THRESHOLD = new BigDecimal("1.5");             // (was 1.7)
 
     // ATR-based thresholds
     private static final BigDecimal HARD_ATR_GUARD = new BigDecimal("2.5");       // force WAIT if extension > 2.5 * ATR
@@ -234,7 +234,7 @@ public class SymbolScanner {
                 signal, false);
     }
 
-    // -------------------- FULL SCANNER (with Wilder's ATR) --------------------
+    // -------------------- FULL SCANNER (with Wilder's ATR) - MODIFIED --------------------
     private void evaluateAndStoreFull(Integer scripCode, String symbol, int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 60);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
@@ -256,19 +256,9 @@ public class SymbolScanner {
 
         // --- Multi-day indicators ---
         BigDecimal ema20 = calculator.calculateEMA(allCandles, 20);
-
-        // RSI from recent 42 candles
         List<CandleData> recentCandles = allCandles.size() > 42 ?
-                allCandles.subList(allCandles.size() - 42, allCandles.size()) :
-                allCandles;
+                allCandles.subList(allCandles.size() - 42, allCandles.size()) : allCandles;
         BigDecimal rsi = calculator.calculateRSI(recentCandles, 14);
-
-        // Volume expansion: current volume vs average of last 10 candles.
-        // NOTE: This is a simple ratio; it's the weakest link. Future improvements:
-        // - Z-score of volume
-        // - Volume percentile vs last 20 sessions
-        // - VWAP participation rate
-        // - Comparison to same time previous day
         BigDecimal volumeExp = calculator.calculateVolumeExpansion(allCandles, 10);
 
         // --- Day-specific indicators ---
@@ -286,8 +276,7 @@ public class SymbolScanner {
         // --- Absolute extension and extension in ATR units ---
         BigDecimal absoluteExtension = latestToday.getClose().subtract(vwap).abs();
         BigDecimal extensionATR = atr14.compareTo(BigDecimal.ZERO) > 0 ?
-                absoluteExtension.divide(atr14, 2, RoundingMode.HALF_UP) :
-                BigDecimal.ZERO;
+                absoluteExtension.divide(atr14, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
         // --- HARD ATR GUARD: if extension > 2.5 * ATR, force WAIT immediately ---
         if (extensionATR.compareTo(HARD_ATR_GUARD) > 0) {
@@ -302,77 +291,37 @@ public class SymbolScanner {
             return;
         }
 
-        // --- Opening Range Break with retest (no energy filter yet) ---
-        boolean openingRangeBreak = false;
-        if (todaysCandles.size() >= OPENING_RANGE_CANDLES + 1 && previousCandle != null) {
-            BigDecimal openingRangeHigh = todaysCandles.subList(0, OPENING_RANGE_CANDLES).stream()
-                    .map(CandleData::getHigh)
-                    .max(BigDecimal::compareTo)
-                    .orElse(BigDecimal.ZERO);
-            if (previousCandle.getClose().compareTo(openingRangeHigh) > 0 &&
-                latestToday.getClose().compareTo(openingRangeHigh) > 0) {
-                openingRangeBreak = true;
-            }
-        }
+        // --- Opening Range Break ---
+        boolean openingRangeBreak = checkOpeningRangeBreak(todaysCandles, previousCandle);
 
         // --- Last Hour Volume vs First Hour ---
-        boolean lastHourVolumeStrong = false;
-        if (todaysCandles.size() >= 24) {
-            List<CandleData> firstHourCandles = todaysCandles.subList(0, 12);
-            List<CandleData> lastHourCandles = todaysCandles.subList(todaysCandles.size() - 12, todaysCandles.size());
-
-            BigDecimal firstHourVol = firstHourCandles.stream()
-                    .map(c -> BigDecimal.valueOf(c.getVolume()))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal lastHourVol = lastHourCandles.stream()
-                    .map(c -> BigDecimal.valueOf(c.getVolume()))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            if (lastHourVol.compareTo(firstHourVol) > 0) {
-                lastHourVolumeStrong = true;
-            }
-        }
+        boolean lastHourVolumeStrong = checkLastHourVolume(todaysCandles);
 
         // --- 15-minute VWAP confirmation ---
-        boolean above15MinVWAP = false;
-        if (todaysCandles.size() >= 3) {
-            List<CandleData> candles15 = aggregateTo15Min(todaysCandles);
-            BigDecimal vwap15 = calculator.calculateVWAP(candles15);
-            if (vwap15 != null && latestToday.getClose().compareTo(vwap15) > 0) {
-                above15MinVWAP = true;
-            }
-        }
+        boolean above15MinVWAP = check15MinVWAP(todaysCandles, latestToday);
 
-        // --- Core mandatory conditions ---
+        // --- Core mandatory conditions (now counted, not early exit) ---
         BigDecimal priceVsVWAP = latestToday.getClose().subtract(vwap)
                 .divide(vwap, 6, RoundingMode.HALF_UP);
         boolean priceAboveVWAP = priceVsVWAP.compareTo(PRICE_ABOVE_VWAP_PERCENT) >= 0;
         boolean slopePositive = normalizedSlope != null && normalizedSlope.compareTo(NORM_SLOPE_THRESHOLD) > 0;
         boolean volumeStrong = volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0;
 
-        // If any core condition fails, signal is WAIT
-        if (!priceAboveVWAP || !slopePositive || !volumeStrong) {
-            storeIndicators(
-                    scripCode, symbol, todaysCandles.size(), Constants.FULL,
-                    latestToday.getClose(), vwap, volumeExp,
-                    ema20, null, vwapSlope, rsi,
-                    generateLevels(todaysCandles),
-                    generateVolumeCommentary(todaysCandles),
-                    Constants.WAIT, false);
-            return;
-        }
+        // Log core values for debugging
+        log.debug("{}: priceAboveVWAP={} (priceVsVWAP={}), slopePositive={} (normalizedSlope={}), volumeStrong={} (volumeExp={})",
+                symbol, priceAboveVWAP, priceVsVWAP, slopePositive, normalizedSlope, volumeStrong, volumeExp);
 
-        // --- Count other conditions ---
+        // --- Count conditions (max 8) ---
         int conditionsMet = 0;
 
-        // 1. Price above VWAP (already true, counted)
-        conditionsMet++;
+        // 1. Price above VWAP
+        if (priceAboveVWAP) conditionsMet++;
 
         // 2. Above EMA20
         if (ema20 != null && latestToday.getClose().compareTo(ema20) > 0) conditionsMet++;
 
-        // 3. Normalized slope (already true, counted)
-        conditionsMet++;
+        // 3. Normalized slope positive
+        if (slopePositive) conditionsMet++;
 
         // 4. RSI > 60 and price rising, with exhaustion guard for RSI > 80
         boolean rsiCondition = false;
@@ -392,8 +341,8 @@ public class SymbolScanner {
         }
         if (rsiCondition) conditionsMet++;
 
-        // 5. Volume expansion (already true, counted)
-        conditionsMet++;
+        // 5. Volume expansion strong
+        if (volumeStrong) conditionsMet++;
 
         // 6. Opening range break
         if (openingRangeBreak) conditionsMet++;
@@ -412,8 +361,10 @@ public class SymbolScanner {
             conditionsMet--; // additional -1 if > 2.2 * ATR (total -2)
         }
 
-        int requiredConditions = 6; // adjust as needed
+        int requiredConditions = 5; // adjust as needed
         String signal = (conditionsMet >= requiredConditions) ? Constants.ENTRY_READY : Constants.WAIT;
+
+        log.debug("{} conditionsMet={} required={} signal={}", symbol, conditionsMet, requiredConditions, signal);
 
         // --- Generate support/resistance levels and check if at strong support (ATR-based) ---
         String levelInsights = generateLevels(todaysCandles);
@@ -426,6 +377,37 @@ public class SymbolScanner {
                 levelInsights,
                 generateVolumeCommentary(todaysCandles),
                 signal, atStrongSupport);
+    }
+
+    // -------------------- Helper methods for full scanner --------------------
+    private boolean checkOpeningRangeBreak(List<CandleData> todaysCandles, CandleData previousCandle) {
+        if (todaysCandles.size() < OPENING_RANGE_CANDLES + 1 || previousCandle == null) return false;
+        BigDecimal openingRangeHigh = todaysCandles.subList(0, OPENING_RANGE_CANDLES).stream()
+                .map(CandleData::getHigh)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+        return previousCandle.getClose().compareTo(openingRangeHigh) > 0 &&
+               todaysCandles.get(todaysCandles.size() - 1).getClose().compareTo(openingRangeHigh) > 0;
+    }
+
+    private boolean checkLastHourVolume(List<CandleData> todaysCandles) {
+        if (todaysCandles.size() < 24) return false;
+        List<CandleData> firstHourCandles = todaysCandles.subList(0, 12);
+        List<CandleData> lastHourCandles = todaysCandles.subList(todaysCandles.size() - 12, todaysCandles.size());
+        BigDecimal firstHourVol = firstHourCandles.stream()
+                .map(c -> BigDecimal.valueOf(c.getVolume()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal lastHourVol = lastHourCandles.stream()
+                .map(c -> BigDecimal.valueOf(c.getVolume()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return lastHourVol.compareTo(firstHourVol) > 0;
+    }
+
+    private boolean check15MinVWAP(List<CandleData> todaysCandles, CandleData latestToday) {
+        if (todaysCandles.size() < 3) return false;
+        List<CandleData> candles15 = aggregateTo15Min(todaysCandles);
+        BigDecimal vwap15 = calculator.calculateVWAP(candles15);
+        return vwap15 != null && latestToday.getClose().compareTo(vwap15) > 0;
     }
 
     // -------------------- WILDER'S ATR (14-period) --------------------
@@ -649,7 +631,7 @@ public class SymbolScanner {
                 .set("levelInsights", levelInsights)
                 .set("volumeCommentary", volumeCommentary)
                 .set("signal", signal)
-                .set("atStrongSupport", atStrongSupport); // New field
+                .set("atStrongSupport", atStrongSupport);
 
         if (Constants.FULL.equals(mode)) {
             if (ema20 != null) update.set("ema20", ema20);
