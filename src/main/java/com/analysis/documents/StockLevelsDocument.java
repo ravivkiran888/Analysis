@@ -3,6 +3,7 @@ package com.analysis.documents;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
@@ -12,7 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @Document(collection = "stock_levels")
 public class StockLevelsDocument {
-    @Id
+   
     private String symbol;
     private double ltp;
     private String marketBias;
@@ -31,6 +32,10 @@ public class StockLevelsDocument {
     // Optional: zones if needed
     private List<Zone> supportZones;
     private List<Zone> resistanceZones;
+    
+    @Field("description")
+    private String description;
+ 
 
     @Data
     @NoArgsConstructor
