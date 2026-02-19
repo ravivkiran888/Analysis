@@ -25,6 +25,7 @@ public class Constants {
 	public static final String WAIT = "WAIT";
 	public static final String EARLY = "EARLY";
 	public static final String FULL = "FULL";
+	public static final String WATCH = "WATCH";
 	
 	public static final String VOLUME_EXPANSION = "volumeExpansion";
 	public static final String TOTAL_DAY_VOLUME = "totalDayVolume";

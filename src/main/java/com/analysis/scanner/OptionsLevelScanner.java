@@ -1,13 +1,14 @@
 package com.analysis.scanner;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,8 +42,27 @@ public class OptionsLevelScanner {
     private static final int THREAD_POOL_SIZE = 8;
     private static final int SCAN_TIMEOUT_MINUTES = 4;
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final BigDecimal PROXIMITY_THRESHOLD = new BigDecimal("0.5");      // ₹0.50 for key support proximity
-    private static final BigDecimal IMMEDIATE_SUPPORT_PERCENT = new BigDecimal("0.05"); // 5% below LTP
+
+    // Distance thresholds
+    private static final BigDecimal MAX_DISTANCE_PERCENT = new BigDecimal("2.0");      // 2% for active levels
+    private static final BigDecimal ATM_RANGE_PERCENT = new BigDecimal("1.0");         // 1% for ATM PCR
+    private static final BigDecimal CLUSTER_RANGE_PERCENT = new BigDecimal("0.5");     // 0.5% for clustering
+    private static final BigDecimal BREAK_PROXIMITY_PERCENT = new BigDecimal("0.3");   // 0.3% for break detection
+
+    // Noise filter: ignore OI changes less than 0.2% of total chain OI
+    private static final double MIN_OI_CHANGE_FRACTION = 0.002;
+
+    // Weights for level selection (composite score)
+    private static final double OI_WEIGHT_SELECTION = 0.6;
+    private static final double PROXIMITY_WEIGHT_SELECTION = 0.4;
+
+    // Weights for strength score (max 100)
+    private static final double OI_WEIGHT_STRENGTH = 40;
+    private static final double DISTANCE_WEIGHT_STRENGTH = 30;
+    private static final double MOMENTUM_WEIGHT_STRENGTH = 30;
+
+    // Scale for momentum percentage (100% buildup = 30 points)
+    private static final double MOMENTUM_SCALE = 100.0;
 
     private final OptionsAPIClient optionsApiClient;
     private final MongoTemplate mongoTemplate;
@@ -64,15 +84,11 @@ public class OptionsLevelScanner {
         log.info("Initialized OptionsLevelScanner with thread pool of {} threads", THREAD_POOL_SIZE);
     }
 
-  
-    @Scheduled(cron = "0 */15 9-15 * * MON-FRI")
+    @Scheduled(cron = "0 */15 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     public void scan() {
         LocalTime now = LocalTime.now(IST_ZONE);
-        // Skip if after 3:30 PM (15:30)
-      
-
         if (!isScanning.compareAndSet(false, true)) {
-            log.warn("⚠️ Previous scan still running at {}, skipping this execution", now);
+            log.warn("⚠️ Previous options scan still running at {}, skipping this execution", now);
             return;
         }
         lastScanStartTime = now;
@@ -90,7 +106,6 @@ public class OptionsLevelScanner {
         log.info("🔍 Starting options level scan at {} IST", startTime);
         List<OptionSymbol> allOptionSymbols = optionSymbolRepository.findAll();
 
-        // Extract symbols only
         List<String> symbols = allOptionSymbols.stream()
                 .map(OptionSymbol::getSymbol)
                 .collect(Collectors.toList());
@@ -160,184 +175,423 @@ public class OptionsLevelScanner {
         BigDecimal ltp = payload.path("underlying_ltp").decimalValue();
         JsonNode strikes = payload.path("strikes");
 
-        // --- Initialize totals for PCR ---
+        // --- Data holders ---
+        List<StrikeInfo> allPuts = new ArrayList<>();
+        List<StrikeInfo> allCalls = new ArrayList<>();
+        List<StrikeInfo> putStrikesBelow = new ArrayList<>();
+        List<StrikeInfo> callStrikesAbove = new ArrayList<>();
+
         long totalPutOI = 0;
         long totalCallOI = 0;
-
-        // --- Compute key support (max put OI) ---
-        BigDecimal keySupportPrice = null;
-        long maxPutOI = 0;
-        long keySupportOI = 0;
-
-        // --- Compute resistance (max call OI) ---
-        BigDecimal resistancePrice = null;
+        long maxPutOI = 0;   // for side‑specific normalization
         long maxCallOI = 0;
-        long resistanceOI = 0;
-        long resistanceVolume = 0;
 
-        // Collect put OI for immediate support calculation
-        List<StrikeInfo> putStrikesBelow = new ArrayList<>();
+        long atmPutOI = 0;
+        long atmCallOI = 0;
 
         var fields = strikes.fields();
         while (fields.hasNext()) {
             var entry = fields.next();
-            BigDecimal strikePrice = new BigDecimal(entry.getKey());
+            BigDecimal strike = new BigDecimal(entry.getKey());
             JsonNode strikeData = entry.getValue();
 
             // Put side
             JsonNode putNode = strikeData.path("PE");
             if (!putNode.isMissingNode() && putNode.has("open_interest")) {
-                long putOI = putNode.path("open_interest").asLong();
-                totalPutOI += putOI;
-                if (putOI > maxPutOI) {
-                    maxPutOI = putOI;
-                    keySupportPrice = strikePrice;
-                    keySupportOI = putOI;
+                long oi = putNode.path("open_interest").asLong();
+                long oiChange = putNode.path("change_in_oi").asLong(0L);
+                totalPutOI += oi;
+                maxPutOI = Math.max(maxPutOI, oi);
+                StrikeInfo info = new StrikeInfo(strike, oi, oiChange);
+                allPuts.add(info);
+                if (strike.compareTo(ltp) < 0) {
+                    putStrikesBelow.add(info);
                 }
-                if (strikePrice.compareTo(ltp) < 0) {
-                    putStrikesBelow.add(new StrikeInfo(strikePrice, putOI));
+                if (isWithinPercent(strike, ltp, ATM_RANGE_PERCENT)) {
+                    atmPutOI += oi;
                 }
             }
 
             // Call side
             JsonNode callNode = strikeData.path("CE");
             if (!callNode.isMissingNode() && callNode.has("open_interest")) {
-                long callOI = callNode.path("open_interest").asLong();
-                totalCallOI += callOI;
-                if (callOI > maxCallOI) {
-                    maxCallOI = callOI;
-                    resistancePrice = strikePrice;
-                    resistanceOI = callOI;
-                    resistanceVolume = callNode.path("volume").asLong();
+                long oi = callNode.path("open_interest").asLong();
+                long oiChange = callNode.path("change_in_oi").asLong(0L);
+                totalCallOI += oi;
+                maxCallOI = Math.max(maxCallOI, oi);
+                StrikeInfo info = new StrikeInfo(strike, oi, oiChange);
+                allCalls.add(info);
+                if (strike.compareTo(ltp) > 0) {
+                    callStrikesAbove.add(info);
+                }
+                if (isWithinPercent(strike, ltp, ATM_RANGE_PERCENT)) {
+                    atmCallOI += oi;
                 }
             }
         }
 
-        // --- Compute immediate support zone ---
-        BigDecimal immLow = null;
-        BigDecimal immHigh = null;
-        Map<BigDecimal, Long> zoneOIs = new HashMap<>();
+        // Avoid division by zero
+        if (totalPutOI == 0) totalPutOI = 1;
+        if (totalCallOI == 0) totalCallOI = 1;
 
-        if (!putStrikesBelow.isEmpty()) {
-            BigDecimal lowerBound = ltp.multiply(BigDecimal.ONE.subtract(IMMEDIATE_SUPPORT_PERCENT));
-            List<StrikeInfo> candidates = putStrikesBelow.stream()
-                    .filter(s -> s.strike.compareTo(lowerBound) >= 0)
-                    .collect(Collectors.toList());
+        // --- Cluster detection (only within MAX_DISTANCE_PERCENT) ---
+        List<Cluster> supportClusters = detectClusters(putStrikesBelow, ltp, totalPutOI, true);
+        List<Cluster> resistanceClusters = detectClusters(callStrikesAbove, ltp, totalCallOI, false);
 
-            if (!candidates.isEmpty()) {
-                StrikeInfo best = candidates.stream()
-                        .max((a, b) -> Long.compare(a.oi, b.oi))
-                        .get();
-                immLow = best.strike;
-                immHigh = best.strike;
-                zoneOIs.put(best.strike, best.oi);
+        // --- Find Active Support (nearest strong wall using composite score) ---
+        StrikeInfo activeSupport = findBestLevel(putStrikesBelow, ltp, maxPutOI, true);
 
-                BigDecimal[] highRef = { best.strike };
-                BigDecimal nextStrike = best.strike.add(BigDecimal.ONE);
-                candidates.stream()
-                        .filter(s -> s.strike.compareTo(nextStrike) == 0)
-                        .findFirst()
-                        .ifPresent(next -> {
-                            if (next.oi >= best.oi / 2) {
-                                highRef[0] = next.strike;
-                                zoneOIs.put(next.strike, next.oi);
-                            }
-                        });
-                immHigh = highRef[0];
-            }
+        // --- Find Active Resistance ---
+        StrikeInfo activeResistance = findBestLevel(callStrikesAbove, ltp, maxCallOI, false);
+
+        // --- Compute strength scores (with signed momentum) ---
+        int supportStrength = activeSupport != null ? computeStrengthScore(activeSupport, ltp, maxPutOI, true, totalPutOI) : 0;
+        int resistanceStrength = activeResistance != null ? computeStrengthScore(activeResistance, ltp, maxCallOI, false, totalCallOI) : 0;
+
+        // --- Compute cluster strength totals for pressure ratio ---
+        double totalSupportClusterStrength = supportClusters.stream().mapToDouble(c -> c.strengthScore).sum();
+        double totalResistanceClusterStrength = resistanceClusters.stream().mapToDouble(c -> c.strengthScore).sum();
+
+        // --- Pressure ratio (support vs resistance) ---
+        double pressureRatio = (supportStrength + totalSupportClusterStrength) /
+                               (resistanceStrength + totalResistanceClusterStrength + 0.001); // avoid division by zero
+
+        // --- Compute ATM PCR ---
+        double atmPcr = atmCallOI == 0 ? 0 : (double) atmPutOI / atmCallOI;
+
+        // --- Derive market bias (structural) ---
+        String marketBias = deriveBias(atmPcr, supportStrength, resistanceStrength, pressureRatio);
+
+        // --- Break / weakening flags (enhanced) ---
+        boolean supportWeakening = false;
+        boolean resistanceWeakening = false;
+        boolean breakoutSignal = false;
+
+        if (activeSupport != null) {
+            supportWeakening = activeSupport.oiChange < 0 && isNearPrice(activeSupport.strike, ltp, BREAK_PROXIMITY_PERCENT);
         }
-
-        // Fallback if no immediate support found
-        if (immLow == null) {
-            immLow = keySupportPrice;
-            immHigh = keySupportPrice;
-            if (keySupportPrice != null) {
-                zoneOIs.put(keySupportPrice, keySupportOI);
-            }
+        if (activeResistance != null) {
+            resistanceWeakening = activeResistance.oiChange < 0 && isNearPrice(activeResistance.strike, ltp, BREAK_PROXIMITY_PERCENT);
+            // Breakout requires more than just weakening
+            breakoutSignal = resistanceWeakening &&
+                             supportStrength > resistanceStrength &&
+                             atmPcr > 1.0;
         }
-
-        // --- Compute Put‑Call Ratio (OI) ---
-        double pcr = totalCallOI == 0 ? 0 : (double) totalPutOI / totalCallOI;
-        String pcrFormatted = String.format("%.2f", pcr);
 
         // --- Build rich description ---
-        StringBuilder desc = new StringBuilder();
-        desc.append(symbol).append(" @ ").append(ltp).append("\n");
-        if (keySupportPrice != null) {
-            desc.append("- Key Support: ").append(keySupportPrice)
-                .append(" (OI: ").append(String.format("%,d", keySupportOI)).append(")\n");
-        }
-        if (immLow != null && immHigh != null) {
-            desc.append("- Immediate Support Zone: ").append(immLow);
-            if (immLow.compareTo(immHigh) != 0) {
-                desc.append(" - ").append(immHigh);
-            }
-            desc.append(" (OI: ");
-            boolean first = true;
-            for (Map.Entry<BigDecimal, Long> e : zoneOIs.entrySet()) {
-                if (!first) desc.append(", ");
-                desc.append(e.getKey()).append(": ").append(String.format("%,d", e.getValue()));
-                first = false;
-            }
-            desc.append(")\n");
-        }
-        if (resistancePrice != null) {
-            desc.append("- Resistance: ").append(resistancePrice)
-                .append(" (OI: ").append(String.format("%,d", resistanceOI))
-                .append(", Vol: ").append(String.format("%,d", resistanceVolume)).append(")\n");
-        }
-        desc.append("- PCR (OI): ").append(pcrFormatted).append("\n");
-        desc.append("- Total Put OI: ").append(String.format("%,d", totalPutOI))
-            .append(" | Total Call OI: ").append(String.format("%,d", totalCallOI));
+        String description = buildDescription(symbol, ltp, activeSupport, activeResistance,
+                supportStrength, resistanceStrength, atmPcr, marketBias,
+                supportWeakening, resistanceWeakening, breakoutSignal,
+                supportClusters, resistanceClusters, pressureRatio);
 
-        String description = desc.toString();
-
-        // --- Store the levels with description ---
-        storeLevels(symbol, ltp,
-                keySupportPrice, keySupportOI,
-                immLow, immHigh, zoneOIs,
-                resistancePrice, resistanceOI, resistanceVolume,
-                description);
+        // --- Store everything ---
+        storeLevels(symbol, ltp, activeSupport, activeResistance,
+                supportStrength, resistanceStrength, atmPcr, marketBias,
+                supportWeakening, resistanceWeakening, breakoutSignal,
+                description, supportClusters, resistanceClusters, pressureRatio);
     }
 
     // Helper class for strike info
     private static class StrikeInfo {
         BigDecimal strike;
         long oi;
-        StrikeInfo(BigDecimal strike, long oi) { this.strike = strike; this.oi = oi; }
+        long oiChange;
+        StrikeInfo(BigDecimal strike, long oi, long oiChange) {
+            this.strike = strike;
+            this.oi = oi;
+            this.oiChange = oiChange;
+        }
+    }
+
+    // Helper class for clusters
+    private static class Cluster {
+        BigDecimal lower;
+        BigDecimal upper;
+        long totalOI;
+        double strengthScore; // 0-100
+        Cluster(BigDecimal lower, BigDecimal upper, long totalOI, double strengthScore) {
+            this.lower = lower;
+            this.upper = upper;
+            this.totalOI = totalOI;
+            this.strengthScore = strengthScore;
+        }
+    }
+
+    // Check if strike is within given percent from LTP
+    private boolean isWithinPercent(BigDecimal strike, BigDecimal ltp, BigDecimal percent) {
+        BigDecimal diff = strike.subtract(ltp).abs();
+        BigDecimal diffPct = diff.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        return diffPct.compareTo(percent) <= 0;
+    }
+
+    // Check if price is very near a strike (for break detection)
+    private boolean isNearPrice(BigDecimal strike, BigDecimal ltp, BigDecimal percent) {
+        BigDecimal dist = strike.subtract(ltp).abs();
+        BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        return distPct.compareTo(percent) <= 0;
+    }
+
+    // Detect clusters of consecutive strikes with significant OI, filtered by distance
+    private List<Cluster> detectClusters(List<StrikeInfo> strikes, BigDecimal ltp, long totalSideOI, boolean isSupport) {
+        if (strikes.isEmpty()) return Collections.emptyList();
+
+        // Sort by strike
+        List<StrikeInfo> sorted = new ArrayList<>(strikes);
+        sorted.sort(Comparator.comparing(a -> a.strike));
+
+        List<Cluster> clusters = new ArrayList<>();
+        int i = 0;
+        while (i < sorted.size()) {
+            // Start a potential cluster
+            BigDecimal clusterLow = sorted.get(i).strike;
+            BigDecimal clusterHigh = sorted.get(i).strike;
+            long clusterOi = sorted.get(i).oi;
+            int j = i + 1;
+            while (j < sorted.size()) {
+                BigDecimal prevStrike = sorted.get(j - 1).strike;
+                BigDecimal currStrike = sorted.get(j).strike;
+                BigDecimal gap = currStrike.subtract(prevStrike);
+                BigDecimal gapPct = gap.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+                if (gapPct.compareTo(CLUSTER_RANGE_PERCENT) <= 0) {
+                    // Consecutive
+                    clusterHigh = currStrike;
+                    clusterOi += sorted.get(j).oi;
+                    j++;
+                } else {
+                    break;
+                }
+            }
+            // Calculate cluster midpoint and check distance
+            BigDecimal midpoint = clusterLow.add(clusterHigh).divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+            if (isWithinPercent(midpoint, ltp, MAX_DISTANCE_PERCENT)) {
+                // Normalize cluster OI by total side OI (more stable than max OI)
+                double oiNorm = (double) clusterOi / totalSideOI;
+                double distPct = midpoint.subtract(ltp).abs()
+                                    .divide(ltp, 4, RoundingMode.HALF_UP)
+                                    .multiply(new BigDecimal("100"))
+                                    .doubleValue();
+                double distFactor = 1 - Math.min(1.0, distPct / MAX_DISTANCE_PERCENT.doubleValue());
+                // Strength = OI contribution * OI_WEIGHT_STRENGTH + distance factor * DISTANCE_WEIGHT_STRENGTH
+                double strength = (oiNorm * OI_WEIGHT_STRENGTH) + (distFactor * DISTANCE_WEIGHT_STRENGTH);
+                clusters.add(new Cluster(clusterLow, clusterHigh, clusterOi, strength));
+            }
+            i = j;
+        }
+        return clusters;
+    }
+
+    // Find the best level using composite score (OI + proximity)
+    private StrikeInfo findBestLevel(List<StrikeInfo> candidates, BigDecimal ltp, long maxSideOi, boolean isSupport) {
+        if (candidates.isEmpty()) return null;
+        StrikeInfo best = null;
+        double bestScore = -1;
+
+        for (StrikeInfo info : candidates) {
+            if (!isWithinPercent(info.strike, ltp, MAX_DISTANCE_PERCENT)) continue;
+
+            // Normalized OI (0-1) using side‑specific max
+            double oiNorm = (double) info.oi / maxSideOi;
+            // Proximity score: closer to LTP = higher (max 1 when distance 0)
+            BigDecimal dist = isSupport ? ltp.subtract(info.strike) : info.strike.subtract(ltp);
+            BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            double proxFactor = 1 - Math.min(1.0, distPct.doubleValue() / MAX_DISTANCE_PERCENT.doubleValue());
+
+            double composite = (oiNorm * OI_WEIGHT_SELECTION) + (proxFactor * PROXIMITY_WEIGHT_SELECTION);
+            if (composite > bestScore) {
+                bestScore = composite;
+                best = info;
+            }
+        }
+        return best;
+    }
+
+    // Compute strength score with signed momentum and noise filtering
+    private int computeStrengthScore(StrikeInfo info, BigDecimal ltp, long maxSideOi, boolean isSupport, long totalSideOI) {
+        // OI magnitude score (0-40) – normalized by side‑specific max
+        double oiNorm = Math.min(1.0, (double) info.oi / maxSideOi);
+        double oiScore = oiNorm * OI_WEIGHT_STRENGTH;
+
+        // Distance score (0-30)
+        BigDecimal dist = isSupport ? ltp.subtract(info.strike) : info.strike.subtract(ltp);
+        BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        double distFactor = 1 - Math.min(1.0, distPct.doubleValue() / MAX_DISTANCE_PERCENT.doubleValue());
+        double distScore = distFactor * DISTANCE_WEIGHT_STRENGTH;
+
+        // Momentum score based on percentage buildup, signed
+        double momentumScore = 0;
+        if (info.oi > 0 && Math.abs(info.oiChange) > MIN_OI_CHANGE_FRACTION * totalSideOI) {
+            double buildupPercent = (double) info.oiChange / info.oi * 100;
+            // Scale to MOMENTUM_WEIGHT_STRENGTH (max 30)
+            double scaled = Math.min(MOMENTUM_WEIGHT_STRENGTH, Math.abs(buildupPercent) / MOMENTUM_SCALE * MOMENTUM_WEIGHT_STRENGTH);
+            momentumScore = info.oiChange > 0 ? scaled : -scaled;
+        }
+
+        // Total score cannot be negative
+        double total = oiScore + distScore + momentumScore;
+        return (int) Math.max(0, total);
+    }
+
+    // Derive market bias using ATM PCR, strength comparison, and pressure ratio
+    private String deriveBias(double atmPcr, int supportStrength, int resistanceStrength, double pressureRatio) {
+        if (pressureRatio > 1.3 && atmPcr > 1.0) {
+            return "Bullish";
+        } else if (pressureRatio < 0.7 && atmPcr < 1.0) {
+            return "Bearish";
+        } else if (supportStrength > resistanceStrength && atmPcr > 1.0) {
+            return "Bullish";
+        } else if (resistanceStrength > supportStrength && atmPcr < 1.0) {
+            return "Bearish";
+        } else if (atmPcr > 1.2) {
+            return "Bullish";
+        } else if (atmPcr < 0.8) {
+            return "Bearish";
+        } else {
+            return "Neutral";
+        }
+    }
+
+    // Build human-readable description
+    private String buildDescription(String symbol, BigDecimal ltp,
+                                    StrikeInfo support, StrikeInfo resistance,
+                                    int supportStrength, int resistanceStrength,
+                                    double atmPcr, String bias,
+                                    boolean supportWeakening, boolean resistanceWeakening,
+                                    boolean breakoutSignal,
+                                    List<Cluster> supportClusters, List<Cluster> resistanceClusters,
+                                    double pressureRatio) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" @ ").append(ltp).append("\n");
+
+        // Active support
+        if (support != null) {
+            BigDecimal dist = ltp.subtract(support.strike);
+            BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            String weakening = supportWeakening ? " (weakening)" : "";
+            sb.append(String.format("🟢 Active Support: %.2f (%.2f%% below, OI: %,d, change: %+d)%s\n",
+                    support.strike, distPct, support.oi, support.oiChange, weakening));
+            sb.append("   Strength Score: ").append(supportStrength).append("/100\n");
+        } else {
+            sb.append("🟢 No active support within ").append(MAX_DISTANCE_PERCENT).append("%\n");
+        }
+
+        // Support clusters
+        if (!supportClusters.isEmpty()) {
+            sb.append("   Support Zones:\n");
+            for (Cluster c : supportClusters) {
+                sb.append(String.format("      %.2f-%.2f (total OI: %,d, strength: %.0f/100)\n",
+                        c.lower, c.upper, c.totalOI, c.strengthScore));
+            }
+        }
+
+        // Active resistance
+        if (resistance != null) {
+            BigDecimal dist = resistance.strike.subtract(ltp);
+            BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            String weakening = resistanceWeakening ? " (weakening)" : "";
+            String breakout = breakoutSignal ? " 🚨 BREAKOUT POSSIBLE" : "";
+            sb.append(String.format("🔴 Active Resistance: %.2f (%.2f%% above, OI: %,d, change: %+d)%s%s\n",
+                    resistance.strike, distPct, resistance.oi, resistance.oiChange, weakening, breakout));
+            sb.append("   Strength Score: ").append(resistanceStrength).append("/100\n");
+        } else {
+            sb.append("🔴 No active resistance within ").append(MAX_DISTANCE_PERCENT).append("%\n");
+        }
+
+        // Resistance clusters
+        if (!resistanceClusters.isEmpty()) {
+            sb.append("   Resistance Zones:\n");
+            for (Cluster c : resistanceClusters) {
+                sb.append(String.format("      %.2f-%.2f (total OI: %,d, strength: %.0f/100)\n",
+                        c.lower, c.upper, c.totalOI, c.strengthScore));
+            }
+        }
+
+        sb.append(String.format("📊 ATM PCR (within %.0f%%): %.2f\n", ATM_RANGE_PERCENT, atmPcr));
+        sb.append(String.format("⚖️ Pressure Ratio (sup/res): %.2f\n", pressureRatio));
+        sb.append("🎯 Market Bias: ").append(bias);
+
+        return sb.toString();
     }
 
     // -------------------- STORAGE --------------------
     private void storeLevels(String symbol, BigDecimal ltp,
-                             BigDecimal keySupportPrice, long keySupportOI,
-                             BigDecimal immLow, BigDecimal immHigh,
-                             Map<BigDecimal, Long> zoneOIs,
-                             BigDecimal resistancePrice, long resistanceOI, long resistanceVolume,
-                             String description) {
+                             StrikeInfo activeSupport, StrikeInfo activeResistance,
+                             int supportStrength, int resistanceStrength,
+                             double atmPcr, String marketBias,
+                             boolean supportWeakening, boolean resistanceWeakening,
+                             boolean breakoutSignal,
+                             String description,
+                             List<Cluster> supportClusters, List<Cluster> resistanceClusters,
+                             double pressureRatio) {
 
         Query query = new Query(Criteria.where("_id").is(symbol));
         Update update = new Update()
                 .set("symbol", symbol)
                 .set("timestamp", Instant.now())
                 .set("ltp", ltp.doubleValue())
-                .set("levels.key_support.price", keySupportPrice != null ? keySupportPrice.doubleValue() : null)
-                .set("levels.key_support.put_oi", keySupportOI)
-                .set("levels.immediate_support.lower", immLow != null ? immLow.doubleValue() : null)
-                .set("levels.immediate_support.upper", immHigh != null ? immHigh.doubleValue() : null)
-                .set("levels.resistance.price", resistancePrice != null ? resistancePrice.doubleValue() : null)
-                .set("levels.resistance.call_oi", resistanceOI)
-                .set("levels.resistance.call_volume", resistanceVolume)
-                .set("description", description);          // New field for the rich description
+                .set("description", description)
+                .set("support_strength", supportStrength)
+                .set("resistance_strength", resistanceStrength)
+                .set("atm_pcr", atmPcr)
+                .set("market_bias", marketBias)
+                .set("support_weakening", supportWeakening)
+                .set("resistance_weakening", resistanceWeakening)
+                .set("breakout_signal", breakoutSignal)
+                .set("pressure_ratio", pressureRatio);
 
-        if (!zoneOIs.isEmpty()) {
-            org.bson.Document zoneOIDoc = new org.bson.Document();
-            zoneOIs.forEach((strike, oi) -> zoneOIDoc.append(strike.toString(), oi));
-            update.set("levels.immediate_support.put_oi_range", zoneOIDoc);
+        // Active support
+        if (activeSupport != null) {
+            BigDecimal dist = ltp.subtract(activeSupport.strike);
+            BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            update.set("active_support.price", activeSupport.strike.doubleValue())
+                  .set("active_support.oi", activeSupport.oi)
+                  .set("active_support.oi_change", activeSupport.oiChange)
+                  .set("active_support.distance_percent", distPct.doubleValue());
+        } else {
+            update.unset("active_support");
         }
 
+        // Active resistance
+        if (activeResistance != null) {
+            BigDecimal dist = activeResistance.strike.subtract(ltp);
+            BigDecimal distPct = dist.divide(ltp, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+            update.set("active_resistance.price", activeResistance.strike.doubleValue())
+                  .set("active_resistance.oi", activeResistance.oi)
+                  .set("active_resistance.oi_change", activeResistance.oiChange)
+                  .set("active_resistance.distance_percent", distPct.doubleValue());
+        } else {
+            update.unset("active_resistance");
+        }
+
+        // Support clusters
+        List<org.bson.Document> supportZoneDocs = new ArrayList<>();
+        for (Cluster c : supportClusters) {
+            org.bson.Document doc = new org.bson.Document()
+                    .append("lower", c.lower.doubleValue())
+                    .append("upper", c.upper.doubleValue())
+                    .append("total_oi", c.totalOI)
+                    .append("strength", c.strengthScore);
+            supportZoneDocs.add(doc);
+        }
+        update.set("support_zones", supportZoneDocs);
+
+        // Resistance clusters
+        List<org.bson.Document> resistanceZoneDocs = new ArrayList<>();
+        for (Cluster c : resistanceClusters) {
+            org.bson.Document doc = new org.bson.Document()
+                    .append("lower", c.lower.doubleValue())
+                    .append("upper", c.upper.doubleValue())
+                    .append("total_oi", c.totalOI)
+                    .append("strength", c.strengthScore);
+            resistanceZoneDocs.add(doc);
+        }
+        update.set("resistance_zones", resistanceZoneDocs);
+
         mongoTemplate.upsert(query, update, "stock_levels");
-        log.debug("Stored levels for {}: LTP={}, keySupport={} (OI={}), imm=[{}-{}], resistance={} (OI={}, vol={})",
-                symbol, ltp, keySupportPrice, keySupportOI, immLow, immHigh, resistancePrice, resistanceOI, resistanceVolume);
+        log.debug("Stored levels for {}: LTP={}, support={}, resistance={}, bias={}, breakout={}",
+                symbol, ltp,
+                activeSupport != null ? activeSupport.strike : "none",
+                activeResistance != null ? activeResistance.strike : "none",
+                marketBias, breakoutSignal);
     }
 
     // -------------------- CLEANUP --------------------

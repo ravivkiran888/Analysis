@@ -44,14 +44,16 @@ import lombok.extern.slf4j.Slf4j;
 public class SymbolScanner {
 
     // ===================== CONSTANTS =====================
-    private static final int EARLY_MIN_CANDLES = 3;
-    private static final int FULL_SCANNER_MIN_CANDLES = 10;        // Switch to full mode at ~10:05 AM
+    private static final int EARLY_MIN_CANDLES = 3;                 // Start showing at 9:30 AM
+    private static final int TRANSITION_CANDLES = 9;                // Until ~10:00 AM (9 candles)
+    private static final int FULL_SCANNER_MIN_CANDLES = 10;         // Switch to full mode at ~10:05 AM
     private static final int THREAD_POOL_SIZE = 8;
     private static final int SCAN_TIMEOUT_MINUTES = 4;
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
-    // Early scanner thresholds
-    private static final BigDecimal EARLY_VOLUME_THRESHOLD = new BigDecimal("1.5");
+    // Early scanner thresholds (relaxed)
+    private static final BigDecimal EARLY_VOLUME_THRESHOLD = new BigDecimal("1.2");   // 1.2x surge
+    private static final BigDecimal EARLY_PRICE_ABOVE_VWAP = BigDecimal.ZERO;         // > VWAP (any amount)
 
     // Full scanner thresholds (relaxed for more signals)
     private static final BigDecimal PRICE_ABOVE_VWAP_PERCENT = new BigDecimal("0.001");   // 0.1% (was 0.2%)
@@ -68,6 +70,11 @@ public class SymbolScanner {
 
     // Opening range: first 30 minutes = 6 candles (9:15 to 9:40)
     private static final int OPENING_RANGE_CANDLES = 6;
+
+    // Signal states
+    private static final String WATCH = "WATCH";
+    private static final String EARLY_MOMENTUM = "EARLY_MOMENTUM";
+    // Constants.ENTRY_READY and Constants.WAIT are assumed to exist
 
     private final APIClient apiClient;
     private final TradingCalculator calculator;
@@ -177,7 +184,7 @@ public class SymbolScanner {
         return elapsedSeconds > 240; // 4 minutes
     }
 
-    // -------------------- EARLY SCANNER --------------------
+    // -------------------- EARLY SCANNER (shows WATCH from 9:30 onward) --------------------
     private void evaluateAndStoreEarly(Integer scripCode, String symbol, int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 10);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
@@ -195,35 +202,55 @@ public class SymbolScanner {
         Bhavcopy prevDay = bhavcopyService.getBhavcopyBySymbol(symbol);
         if (prevDay == null) return;
 
-        // Use intraday baseline (first 3 candles) for volume surge
+        // --- Volume baseline: weighted blend of previous day's avg and first 3 candles ---
+        BigDecimal prevDayAvg = bhavcopyService.getAvgVolumePer5Min(prevDay);
+        if (prevDayAvg == null || prevDayAvg.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("Skipping {} due to invalid previous day volume", symbol);
+            return;
+        }
+
         BigDecimal baselineAvg;
         if (todaysCandles.size() >= 4) {
             List<CandleData> firstFew = todaysCandles.subList(0, 3);
-            baselineAvg = firstFew.stream()
+            BigDecimal first3Avg = firstFew.stream()
                     .map(c -> BigDecimal.valueOf(c.getVolume()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP);
+            // Weighted blend: 60% previous day, 40% first 3 candles
+            baselineAvg = prevDayAvg.multiply(new BigDecimal("0.6"))
+                            .add(first3Avg.multiply(new BigDecimal("0.4")))
+                            .setScale(2, RoundingMode.HALF_UP);
         } else {
-            baselineAvg = bhavcopyService.getAvgVolumePer5Min(prevDay);
-        }
-
-        if (baselineAvg == null || baselineAvg.compareTo(BigDecimal.ZERO) <= 0) {
-            log.warn("Skipping {} due to invalid baseline volume (value: {})", symbol, baselineAvg);
-            return;
+            baselineAvg = prevDayAvg;
         }
 
         BigDecimal volumeRatio = BigDecimal.valueOf(latest.getVolume())
                 .divide(baselineAvg, 2, RoundingMode.HALF_UP);
-
         BigDecimal vwap = calculator.calculateVWAP(todaysCandles);
+
+        // --- Guard against invalid VWAP ---
+        if (vwap == null || vwap.compareTo(BigDecimal.ZERO) <= 0) {
+            log.debug("Skipping {} due to invalid VWAP", symbol);
+            return;
+        }
 
         boolean priceAboveVWAP = latest.getClose().compareTo(vwap) > 0;
         boolean volumeSurge = volumeRatio.compareTo(EARLY_VOLUME_THRESHOLD) >= 0;
-        boolean abovePrevHigh = latest.getClose().compareTo(prevDay.getHghPric()) > 0;
-        boolean abovePrevClose = latest.getClose().compareTo(prevDay.getClsPric()) > 0;
 
-        String signal = (priceAboveVWAP && volumeSurge && (abovePrevHigh || abovePrevClose))
-                ? Constants.ENTRY_READY : Constants.WAIT;
+        // Determine signal: WATCH if both conditions true; ENTRY_READY if also above previous close/high
+        boolean abovePrevClose = latest.getClose().compareTo(prevDay.getClsPric()) > 0;
+        boolean abovePrevHigh = latest.getClose().compareTo(prevDay.getHghPric()) > 0;
+
+        String signal;
+        if (priceAboveVWAP && volumeSurge) {
+            if (abovePrevClose || abovePrevHigh) {
+                signal = Constants.ENTRY_READY;   // stronger signal
+            } else {
+                signal = WATCH;                    // early watch
+            }
+        } else {
+            signal = Constants.WAIT;
+        }
 
         // Early scanner does not compute support levels, so atStrongSupport = false
         storeIndicators(
@@ -234,7 +261,7 @@ public class SymbolScanner {
                 signal, false);
     }
 
-    // -------------------- FULL SCANNER (with Wilder's ATR) - MODIFIED --------------------
+    // -------------------- FULL SCANNER (with early momentum detection) --------------------
     private void evaluateAndStoreFull(Integer scripCode, String symbol, int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 60);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
@@ -263,6 +290,12 @@ public class SymbolScanner {
 
         // --- Day-specific indicators ---
         BigDecimal vwap = calculator.calculateVWAP(todaysCandles);
+        // --- Guard against invalid VWAP ---
+        if (vwap == null || vwap.compareTo(BigDecimal.ZERO) <= 0) {
+            log.debug("Skipping {} due to invalid VWAP", symbol);
+            return;
+        }
+
         BigDecimal vwapSlope = calculator.calculateVWAPSlope(todaysCandles);
         BigDecimal normalizedSlope = vwapSlope != null ?
                 vwapSlope.divide(vwap, 10, RoundingMode.HALF_UP) : null;
@@ -291,6 +324,33 @@ public class SymbolScanner {
             return;
         }
 
+        // --- EARLY MOMENTUM DETECTION (catch the very beginning of a move) ---
+        boolean earlyMomentum = false;
+
+        // 1. Price just above VWAP (up to 0.2% above)
+        BigDecimal priceVsVWAP = latestToday.getClose().subtract(vwap)
+                .divide(vwap, 6, RoundingMode.HALF_UP);
+        boolean justAboveVWAP = priceVsVWAP.compareTo(BigDecimal.ZERO) > 0 &&
+                                priceVsVWAP.compareTo(new BigDecimal("0.002")) <= 0; // up to 0.2%
+
+        // 2. VWAP slope positive (any positive value)
+        boolean slopePositive = normalizedSlope != null && normalizedSlope.compareTo(BigDecimal.ZERO) > 0;
+
+        // 3. Volume expansion > 1.2x (lighter than the 1.5x used for ENTRY_READY)
+        boolean volumeLightSurge = volumeExp != null && volumeExp.compareTo(new BigDecimal("1.2")) > 0;
+
+        // 4. RSI not overbought (<65)
+        boolean rsiNotOverbought = rsi == null || rsi.compareTo(new BigDecimal("65")) < 0;
+
+        // 5. Green candle (close > previous close)
+        boolean greenCandle = previousCandle != null &&
+                              latestToday.getClose().compareTo(previousCandle.getClose()) > 0;
+
+        // 6. Not extended (less than 1 ATR above VWAP)
+        boolean notExtended = extensionATR.compareTo(BigDecimal.ONE) < 0;
+
+        earlyMomentum = justAboveVWAP && slopePositive && volumeLightSurge && rsiNotOverbought && greenCandle && notExtended;
+
         // --- Opening Range Break ---
         boolean openingRangeBreak = checkOpeningRangeBreak(todaysCandles, previousCandle);
 
@@ -300,28 +360,26 @@ public class SymbolScanner {
         // --- 15-minute VWAP confirmation ---
         boolean above15MinVWAP = check15MinVWAP(todaysCandles, latestToday);
 
-        // --- Core mandatory conditions (now counted, not early exit) ---
-        BigDecimal priceVsVWAP = latestToday.getClose().subtract(vwap)
-                .divide(vwap, 6, RoundingMode.HALF_UP);
-        boolean priceAboveVWAP = priceVsVWAP.compareTo(PRICE_ABOVE_VWAP_PERCENT) >= 0;
-        boolean slopePositive = normalizedSlope != null && normalizedSlope.compareTo(NORM_SLOPE_THRESHOLD) > 0;
+        // --- Core mandatory conditions (for condition counting) ---
+        boolean priceAboveVWAP = priceVsVWAP.compareTo(PRICE_ABOVE_VWAP_PERCENT) >= 0; // original threshold 0.1%
+        boolean slopePositiveStrict = normalizedSlope != null && normalizedSlope.compareTo(NORM_SLOPE_THRESHOLD) > 0;
         boolean volumeStrong = volumeExp != null && volumeExp.compareTo(VOLUME_THRESHOLD) > 0;
 
         // Log core values for debugging
-        log.debug("{}: priceAboveVWAP={} (priceVsVWAP={}), slopePositive={} (normalizedSlope={}), volumeStrong={} (volumeExp={})",
-                symbol, priceAboveVWAP, priceVsVWAP, slopePositive, normalizedSlope, volumeStrong, volumeExp);
+        log.debug("{}: priceAboveVWAP={} (priceVsVWAP={}), slopePositiveStrict={} (normalizedSlope={}), volumeStrong={} (volumeExp={})",
+                symbol, priceAboveVWAP, priceVsVWAP, slopePositiveStrict, normalizedSlope, volumeStrong, volumeExp);
 
         // --- Count conditions (max 8) ---
         int conditionsMet = 0;
 
-        // 1. Price above VWAP
+        // 1. Price above VWAP (strict)
         if (priceAboveVWAP) conditionsMet++;
 
         // 2. Above EMA20
         if (ema20 != null && latestToday.getClose().compareTo(ema20) > 0) conditionsMet++;
 
-        // 3. Normalized slope positive
-        if (slopePositive) conditionsMet++;
+        // 3. Normalized slope positive (strict)
+        if (slopePositiveStrict) conditionsMet++;
 
         // 4. RSI > 60 and price rising, with exhaustion guard for RSI > 80
         boolean rsiCondition = false;
@@ -361,8 +419,27 @@ public class SymbolScanner {
             conditionsMet--; // additional -1 if > 2.2 * ATR (total -2)
         }
 
-        int requiredConditions = 5; // adjust as needed
-        String signal = (conditionsMet >= requiredConditions) ? Constants.ENTRY_READY : Constants.WAIT;
+        // --- Progressive required conditions based on time of day ---
+        int requiredConditions;
+        if (candleCount < TRANSITION_CANDLES) {
+            // Before ~10:00 AM, require only 4 conditions (catch early movers)
+            requiredConditions = 4;
+        } else {
+            // Later in the day, require full 5 conditions for confirmation
+            requiredConditions = 5;
+        }
+
+        // --- Final Signal Determination (early momentum overrides) ---
+        String signal;
+        if (earlyMomentum) {
+            signal = EARLY_MOMENTUM;
+        } else if (conditionsMet >= requiredConditions) {
+            signal = Constants.ENTRY_READY;
+        } else if (conditionsMet >= 3) {
+            signal = WATCH;
+        } else {
+            signal = Constants.WAIT;
+        }
 
         log.debug("{} conditionsMet={} required={} signal={}", symbol, conditionsMet, requiredConditions, signal);
 

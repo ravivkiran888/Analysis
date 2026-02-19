@@ -19,14 +19,14 @@ public class SignalService {
         this.mongoTemplate = mongoTemplate;
     }
 
-    public List<SymbolIndicators> getEntryReadySymbols() {
-        Query query = new Query(Criteria.where(Constants.SIGNAL).is(Constants.ENTRY_READY));
-      
+   
+    public List<SymbolIndicators> getEntryReadyOrWatchSymbols() {
+        Query query = new Query(Criteria.where(Constants.SIGNAL).in(Constants.ENTRY_READY, Constants.WATCH));
         query.with(Sort.by(
-        	    Sort.Order.desc("volumeExpansion"),  // recent momentum first
-        	    Sort.Order.desc("totalDayVolume")    // then liquidity
-        	));
-        
+                Sort.Order.desc("volumeExpansion"),  // recent momentum first
+                Sort.Order.desc("totalDayVolume")    // then liquidity
+        ));
         return mongoTemplate.find(query, SymbolIndicators.class);
     }
+    
 }

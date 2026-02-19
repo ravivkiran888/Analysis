@@ -39,7 +39,7 @@ public class AccessTokenRunner  implements CommandLineRunner{
         );
 
         
-        String accessToken = "";
+        String accessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6IjUwNDA3ODI0Iiwicm9sZSI6IjIwMTkyIiwiU3RhdGUiOiIiLCJSZWRpcmVjdFNlcnZlciI6IkEiLCJuYmYiOjE3NzE0NzMxODQsImV4cCI6MTc3MTUyNTc5OSwiaWF0IjoxNzcxNDczMTg0fQ.OmU4njET6oprDCs3bqu9z_c5uXJBxaHp8w3XQmK9QKk";
         
         AccessTokenEntity token = new AccessTokenEntity(
         		accessToken,
