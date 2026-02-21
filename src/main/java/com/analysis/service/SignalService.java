@@ -33,13 +33,11 @@ public class SignalService {
 
         // Apply sorting
         query.with(Sort.by(
-                Sort.Order.desc("volumeExpansion"),
                 Sort.Order.desc("totalDayVolume")
         ));
 
-        // Fetch directly from symbol_indicators collection
         List<SymbolIndicators> indicators =
-                mongoTemplate.find(query, SymbolIndicators.class, "symbol_indicators");
+                mongoTemplate.find(query, SymbolIndicators.class, Constants.SYMBOL_INDICATORS_COLLECTION);
 
   
         return indicators;
