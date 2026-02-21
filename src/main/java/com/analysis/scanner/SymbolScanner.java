@@ -572,56 +572,7 @@ public class SymbolScanner {
 
     // -------------------- DYNAMIC VOLUME COMMENTARY --------------------
     private String generateVolumeCommentary(List<CandleData> candles) {
-        if (candles == null || candles.isEmpty()) return "No volume data yet.";
-
-        int totalCandles = candles.size();
-        CandleData latest = candles.get(totalCandles - 1);
-        String currentTime = latest.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm"));
-
-        CandleData peakCandle = candles.stream()
-                .max((a, b) -> Long.compare(a.getVolume(), b.getVolume()))
-                .orElse(null);
-
-        double avgVolume = candles.stream()
-                .mapToLong(CandleData::getVolume)
-                .average()
-                .orElse(0);
-
-        double currentRatio = latest.getVolume() / avgVolume;
-
-        String currentDesc;
-        if (currentRatio < 0.5) {
-            currentDesc = "very light";
-        } else if (currentRatio < 0.8) {
-            currentDesc = "light";
-        } else if (currentRatio < 1.2) {
-            currentDesc = "normal";
-        } else if (currentRatio < 1.5) {
-            currentDesc = "strong";
-        } else {
-            currentDesc = "very strong";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(currentTime).append(": ");
-
-        if (peakCandle != null) {
-            String peakTime = peakCandle.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm"));
-            long peakVol = peakCandle.getVolume();
-
-            if (peakCandle.equals(latest)) {
-                sb.append(String.format("Current volume is a new high spike! (%s). ",
-                        formatVolume(peakVol)));
-            } else {
-                sb.append(String.format("Strong spike at %s (%s) now faded. ",
-                        peakTime, formatVolume(peakVol)));
-            }
-        }
-
-        sb.append(String.format("Current volume %s (%.2fx avg).",
-                currentDesc, currentRatio));
-
-        return sb.toString();
+    	return "";
     }
 
     private String formatVolume(long vol) {
@@ -638,55 +589,7 @@ public class SymbolScanner {
 
     // -------------------- LEVEL GENERATION (Markdown table) --------------------
     private String generateLevels(List<CandleData> candles) {
-        if (candles == null || candles.isEmpty()) {
-            return "No intraday data available.";
-        }
-
-        BigDecimal dayHigh = candles.stream().map(CandleData::getHigh).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        BigDecimal dayLow = candles.stream().map(CandleData::getLow).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        BigDecimal close = candles.get(candles.size() - 1).getClose();
-
-        BigDecimal pivot = dayHigh.add(dayLow).add(close)
-                .divide(new BigDecimal("3"), 2, RoundingMode.HALF_UP);
-
-        BigDecimal r1 = pivot.multiply(new BigDecimal("2"))
-                .subtract(dayLow).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal r2 = pivot.add(dayHigh.subtract(dayLow))
-                .setScale(2, RoundingMode.HALF_UP);
-        BigDecimal s1 = pivot.multiply(new BigDecimal("2"))
-                .subtract(dayHigh).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal s2 = pivot.subtract(dayHigh.subtract(dayLow))
-                .setScale(2, RoundingMode.HALF_UP);
-
-        BigDecimal roundResistance = roundToNearest(close, 0.50);
-        BigDecimal roundSupport = roundToNearest(dayLow, 0.10);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("📊 **Key Levels for Next Session**\n\n");
-        sb.append("| Level | Price | Action |\n");
-        sb.append("|-------|-------|--------|\n");
-        sb.append(String.format("| R2    | %s | Day High |\n", dayHigh));
-        sb.append(String.format("| R1    | %s | Primary Target |\n", r1));
-        if (roundResistance.compareTo(r1) > 0 && roundResistance.compareTo(dayHigh) < 0) {
-            sb.append(String.format("| R (round) | %s | Psychological resistance |\n", roundResistance));
-        }
-        sb.append(String.format("| S1    | %s | Key Support |\n", s1));
-        sb.append(String.format("| S2    | %s | Strong Support |\n", s2));
-        if (roundSupport.compareTo(s1) < 0 && roundSupport.compareTo(s2) > 0) {
-            sb.append(String.format("| S (round) | %s | Recent low support |\n", roundSupport));
-        }
-
-        long lastHourVolume = candles.stream()
-                .filter(c -> c.getTimestamp().getHour() >= 14)
-                .mapToLong(CandleData::getVolume).sum();
-        sb.append("\n📈 **Volume Insight:**\n");
-        if (lastHourVolume > 1_000_000) {
-            sb.append("– Heavy volume in last hour (selling pressure). Cautious on longs near close.\n");
-        } else {
-            sb.append("– Volume tapered in last hour; typical end-of-day activity.\n");
-        }
-
-        return sb.toString();
+    	return "";
     }
 
     // -------------------- STORAGE (with atStrongSupport) --------------------
