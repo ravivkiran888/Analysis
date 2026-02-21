@@ -575,11 +575,7 @@ public class SymbolScanner {
     	return "";
     }
 
-    private String formatVolume(long vol) {
-        if (vol >= 1_000_000) return String.format("%.1fM", vol / 1_000_000.0);
-        if (vol >= 1_000) return String.format("%.1fK", vol / 1_000.0);
-        return Long.toString(vol);
-    }
+  
 
     private BigDecimal roundToNearest(BigDecimal value, double step) {
         BigDecimal stepBD = BigDecimal.valueOf(step);
