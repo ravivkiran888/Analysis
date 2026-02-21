@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 public class SignalController {
 
 	private static final long MIN_VOLUME_THRESHOLD = 1_000_000L;
+	private static final long LIMIT = 30;
+
 
 	// Constant
 	private final SectorIndicatorService sectorIndicatorService;
@@ -40,7 +41,8 @@ public class SignalController {
 	    if (allSymbols == null || allSymbols.isEmpty()) {
 	        return Collections.emptyList();
 	    }
-
+	    
+	   
 	    allSymbols = allSymbols.stream()
 	            .filter(s -> s.getTotalDayVolume() >= MIN_VOLUME_THRESHOLD)
 	            .collect(Collectors.toList());
@@ -55,30 +57,35 @@ public class SignalController {
 	}
 
 	private List<SymbolIndicators> prioritize(List<SymbolIndicators> all) {
+		
+		List<SymbolIndicators> result = new ArrayList<>();
 
-		if (all == null || all.isEmpty()) {
-			return Collections.emptyList();
-		}
+		// First, collect and sort ENTRY_READY signals by volume
+		List<SymbolIndicators> entryReadySignals = all.stream()
+		    .filter(s -> Constants.ENTRY_READY.equals(s.getSignal()))
+		    .sorted((a, b) -> {
+		        long volumeA = a.getTotalDayVolume() != null ? a.getTotalDayVolume() : 0;
+		        long volumeB = b.getTotalDayVolume() != null ? b.getTotalDayVolume() : 0;
+		        return Long.compare(volumeB, volumeA); // Descending (highest volume first)
+		    })
+		    .collect(Collectors.toList());
 
-		int limit = 25;
-		List<SymbolIndicators> result = new ArrayList<>(limit);
+		// Add all ENTRY_READY signals first
+		result.addAll(entryReadySignals);
 
-		for (SymbolIndicators s : all) {
-			if (Constants.ENTRY_READY.equals(s.getSignal())) {
-				result.add(s);
-				if (result.size() == limit) {
-					return result;
-				}
-			}
-		}
-
-		for (SymbolIndicators s : all) {
-			if (Constants.WATCH.equals(s.getSignal())) {
-				result.add(s);
-				if (result.size() == limit) {
-					return result;
-				}
-			}
+		// If we haven't reached LIMIT, add WATCH signals sorted by volume
+		if (result.size() < LIMIT) {
+		    List<SymbolIndicators> watchSignals = all.stream()
+		        .filter(s -> Constants.WATCH.equals(s.getSignal()))
+		        .sorted((a, b) -> {
+		            long volumeA = a.getTotalDayVolume() != null ? a.getTotalDayVolume() : 0;
+		            long volumeB = b.getTotalDayVolume() != null ? b.getTotalDayVolume() : 0;
+		            return Long.compare(volumeB, volumeA); // Descending (highest volume first)
+		        })
+		        .limit(LIMIT - result.size())
+		        .collect(Collectors.toList());
+		    
+		    result.addAll(watchSignals);
 		}
 
 		return result;
