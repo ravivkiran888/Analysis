@@ -12,6 +12,9 @@ public class Constants {
 	public static final String GROW_ACCESS_TOKEN_COLLECTION = "growaccessToken";
 	
 	public static final String OPTION_SYMBOLS_COLLECTION = "option_symbols";
+	public static final String SECTOR_INDICATORS_COLLECTION = "sector_indicators";
+	
+	public static final String SECTOR_INDICES_COLLECTION = "sector_indices";
 	
 
 	

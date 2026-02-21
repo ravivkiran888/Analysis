@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -733,17 +734,29 @@ public class SymbolScanner {
         return ((currentMinute - openMinute) / 5) + 1;
     }
 
+    /**
+     * Parses candle data from JSON and converts timestamps from UTC to IST.
+     */
     private List<CandleData> parseCandles(JsonNode candlesNode) {
         List<CandleData> list = new ArrayList<>();
         DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+        
         for (JsonNode c : candlesNode) {
+            // Parse the timestamp as UTC (API returns UTC)
+            LocalDateTime utcTime = LocalDateTime.parse(c.get(0).asText(), fmt);
+            
+            // Convert UTC to IST (UTC+5:30)
+            ZonedDateTime utcZoned = utcTime.atZone(ZoneId.of("UTC"));
+            ZonedDateTime istZoned = utcZoned.withZoneSameInstant(IST_ZONE);
+            LocalDateTime istTime = istZoned.toLocalDateTime();
+            
             list.add(new CandleData(
-                    LocalDateTime.parse(c.get(0).asText(), fmt),
-                    c.get(1).decimalValue(),
-                    c.get(2).decimalValue(),
-                    c.get(3).decimalValue(),
-                    c.get(4).decimalValue(),
-                    c.get(5).longValue()
+                    istTime,                     // Now in IST
+                    c.get(1).decimalValue(),     // open
+                    c.get(2).decimalValue(),     // high
+                    c.get(3).decimalValue(),     // low
+                    c.get(4).decimalValue(),     // close
+                    c.get(5).longValue()         // volume
             ));
         }
         return list;

@@ -6,30 +6,27 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.analysis.documents.StockLevelsDocument;
 import com.analysis.documents.SymbolIndicators;
-import com.analysis.dto.BuySignalDTO;
+import com.analysis.dto.SectorIndicatorDTO;
+import com.analysis.service.SectorIndicatorService;
 import com.analysis.service.SignalService;
-import com.analysis.service.StockLevelsService;
+
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/signals")
+@RequiredArgsConstructor
 public class SignalController {
 
-    private static final long MIN_VOLUME_THRESHOLD = 1_000_000L; // Constant
-
+    private static final long MIN_VOLUME_THRESHOLD = 1_000_000L;
+    
+    // Constant
+    private final SectorIndicatorService sectorIndicatorService;
     private final SignalService signalService;
-    private final StockLevelsService stockLevelsService;
 
-		public SignalController(SignalService signalService, StockLevelsService stockLevelsService) {
-			this.signalService = signalService;
-			this.stockLevelsService = stockLevelsService;
-		}
     
     @GetMapping("/ready")
     public List<SymbolIndicators> getEntryReadySymbols() {
@@ -43,21 +40,11 @@ public class SignalController {
     }
     
     
-    @GetMapping("/tobuy")
-    public List<BuySignalDTO> getBuySignals(
-            @RequestParam(defaultValue = "1.3") double minPressureRatio,
-            @RequestParam(defaultValue = "true") boolean includeBreakout,
-            @RequestParam(defaultValue = "30") int minSupportStrength) {
-        return stockLevelsService.findBuySignals(minPressureRatio, includeBreakout, minSupportStrength);
-    }   
-
-    @GetMapping("/{symbol}")
-    public ResponseEntity<StockLevelsDocument> getStockLevels(@PathVariable String symbol) {
-    	
-    	
-        return stockLevelsService.findBySymbol(symbol.toUpperCase())
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
     
+    @GetMapping("/sectors")
+    public ResponseEntity<List<SectorIndicatorDTO>> getTopSectors() {
+        List<SectorIndicatorDTO> topSectors = sectorIndicatorService.getTopSectorsByDayChange();
+        return ResponseEntity.ok(topSectors);
+    }
+    		
 }
