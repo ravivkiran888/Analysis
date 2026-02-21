@@ -149,9 +149,9 @@ public class SymbolScanner {
                     Constants.RATE_LIMITER.acquire();
                     Integer scripCodeInt = Integer.parseInt(script.getScripCode());
                     if (candleCount < FULL_SCANNER_MIN_CANDLES) {
-                        evaluateAndStoreEarly(scripCodeInt, script.getSymbol(), candleCount);
+                        evaluateAndStoreEarly(scripCodeInt, script.getSymbol(),script.getSector(), candleCount);
                     } else {
-                        evaluateAndStoreFull(scripCodeInt, script.getSymbol(), candleCount);
+                        evaluateAndStoreFull(scripCodeInt, script.getSymbol(), script.getSector() , candleCount);
                     }
                     successful.incrementAndGet();
                 } catch (Exception e) {
@@ -186,7 +186,7 @@ public class SymbolScanner {
     }
 
     // -------------------- EARLY SCANNER (shows WATCH from 9:30 onward) --------------------
-    private void evaluateAndStoreEarly(Integer scripCode, String symbol, int candleCount) throws Exception {
+    private void evaluateAndStoreEarly(Integer scripCode, String symbol, String sector, int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 10);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
         if (candlesNode.size() < candleCount) return;
@@ -259,11 +259,11 @@ public class SymbolScanner {
                 latest.getClose(), vwap, volumeRatio,
                 null, null, null, null,
                 null, null,
-                signal, false);
+                signal, false,sector);
     }
 
     // -------------------- FULL SCANNER (with early momentum detection) --------------------
-    private void evaluateAndStoreFull(Integer scripCode, String symbol, int candleCount) throws Exception {
+    private void evaluateAndStoreFull(Integer scripCode, String symbol, String sector , int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 60);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
         if (candlesNode.size() < 50) return;
@@ -321,7 +321,7 @@ public class SymbolScanner {
                     ema20, null, vwapSlope, rsi,
                     generateLevels(todaysCandles),
                     generateVolumeCommentary(todaysCandles),
-                    Constants.WAIT, false);
+                    Constants.WAIT, false, sector);
             return;
         }
 
@@ -454,7 +454,7 @@ public class SymbolScanner {
                 ema20, null, vwapSlope, rsi,
                 levelInsights,
                 generateVolumeCommentary(todaysCandles),
-                signal, atStrongSupport);
+                signal, atStrongSupport, sector);
     }
 
     // -------------------- Helper methods for full scanner --------------------
@@ -695,7 +695,7 @@ public class SymbolScanner {
             BigDecimal price, BigDecimal vwap, BigDecimal volumeExpansion,
             BigDecimal ema20, BigDecimal ema50, BigDecimal vwapSlope, BigDecimal rsi,
             String levelInsights, String volumeCommentary, String signal,
-            boolean atStrongSupport) {
+            boolean atStrongSupport , String sector) {
 
         Query query = new Query(Criteria.where(Constants.SCRIPT_CODE).is(String.valueOf(scripCode)));
         Update update = new Update()
@@ -709,6 +709,7 @@ public class SymbolScanner {
                 .set("levelInsights", levelInsights)
                 .set("volumeCommentary", volumeCommentary)
                 .set("signal", signal)
+                .set("sector", sector)
                 .set("atStrongSupport", atStrongSupport);
 
         if (Constants.FULL.equals(mode)) {

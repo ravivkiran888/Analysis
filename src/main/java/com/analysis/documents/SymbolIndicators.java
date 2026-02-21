@@ -54,6 +54,7 @@ public class SymbolIndicators {
     private String levelInsights = "";
     
     private String volumeCommentary = "";
+    private String sector ;
  
     @Transient
     private String description = "";
