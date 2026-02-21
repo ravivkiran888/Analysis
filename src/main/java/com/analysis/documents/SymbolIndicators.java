@@ -58,4 +58,6 @@ public class SymbolIndicators {
  
     @Transient
     private String description = "";
+    
+    private boolean atStrongSupport ;
 }
