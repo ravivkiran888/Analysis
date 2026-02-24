@@ -129,7 +129,7 @@ public class SymbolScanner {
         }
 
         log.info("🔍 Starting scan at {} IST ({} candles so far)", startTime, candleCount);
-        List<ScripMaster> allScripts = scripMasterRepository.findAll();
+        List<ScripMaster> allScripts = scripMasterRepository.findAll().stream().limit(3).collect(Collectors.toList());
         
         // For testing, you can filter a specific symbol
         // allScripts = allScripts.stream().filter(e->e.getSymbol().equalsIgnoreCase("IDFCFIRSTB")).collect(Collectors.toList());
@@ -189,7 +189,8 @@ public class SymbolScanner {
     private void evaluateAndStoreEarly(Integer scripCode, String symbol, String sector, int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 10);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
-        if (candlesNode.size() < candleCount) return;
+        // FIX: Do NOT require exactly candleCount candles; just need at least 2 for a valid VWAP.
+        if (candlesNode.size() < 2) return;
 
         List<CandleData> allCandles = parseCandles(candlesNode);
         LocalDate today = LocalDate.now(IST_ZONE);
@@ -197,13 +198,13 @@ public class SymbolScanner {
                 .filter(c -> c.getTimestamp().toLocalDate().equals(today))
                 .collect(Collectors.toList());
 
-        if (todaysCandles.size() < candleCount) return;
+        if (todaysCandles.size() < 2) return;
 
         CandleData latest = todaysCandles.get(todaysCandles.size() - 1);
         Bhavcopy prevDay = bhavcopyService.getBhavcopyBySymbol(symbol);
         if (prevDay == null) return;
 
-        // --- Volume baseline: weighted blend of previous day's avg and first 3 candles ---
+        // --- Volume baseline: weighted blend of previous day's avg and first few candles ---
         BigDecimal prevDayAvg = bhavcopyService.getAvgVolumePer5Min(prevDay);
         if (prevDayAvg == null || prevDayAvg.compareTo(BigDecimal.ZERO) <= 0) {
             log.warn("Skipping {} due to invalid previous day volume", symbol);
@@ -211,7 +212,8 @@ public class SymbolScanner {
         }
 
         BigDecimal baselineAvg;
-        if (todaysCandles.size() >= 4) {
+        // FIX: Use first 3 candles as soon as we have at least 3 candles (was >=4)
+        if (todaysCandles.size() >= 3) {
             List<CandleData> firstFew = todaysCandles.subList(0, 3);
             BigDecimal first3Avg = firstFew.stream()
                     .map(c -> BigDecimal.valueOf(c.getVolume()))
