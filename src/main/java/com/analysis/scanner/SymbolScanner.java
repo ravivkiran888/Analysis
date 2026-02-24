@@ -129,7 +129,7 @@ public class SymbolScanner {
         }
 
         log.info("🔍 Starting scan at {} IST ({} candles so far)", startTime, candleCount);
-        List<ScripMaster> allScripts = scripMasterRepository.findAll().stream().limit(3).collect(Collectors.toList());
+        List<ScripMaster> allScripts = scripMasterRepository.findAll();
         
         // For testing, you can filter a specific symbol
         // allScripts = allScripts.stream().filter(e->e.getSymbol().equalsIgnoreCase("IDFCFIRSTB")).collect(Collectors.toList());
