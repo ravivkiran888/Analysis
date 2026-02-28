@@ -187,13 +187,15 @@ public class SymbolScanner {
 
     // -------------------- EARLY SCANNER (shows WATCH from 9:30 onward) --------------------
     private void evaluateAndStoreEarly(Integer scripCode, String symbol, String sector, int candleCount) throws Exception {
+
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 10);
         JsonNode candlesNode = objectMapper.readTree(json).path("data").path("candles");
-        // FIX: Do NOT require exactly candleCount candles; just need at least 2 for a valid VWAP.
+
         if (candlesNode.size() < 2) return;
 
         List<CandleData> allCandles = parseCandles(candlesNode);
         LocalDate today = LocalDate.now(IST_ZONE);
+
         List<CandleData> todaysCandles = allCandles.stream()
                 .filter(c -> c.getTimestamp().toLocalDate().equals(today))
                 .collect(Collectors.toList());
@@ -201,69 +203,60 @@ public class SymbolScanner {
         if (todaysCandles.size() < 2) return;
 
         CandleData latest = todaysCandles.get(todaysCandles.size() - 1);
-        Bhavcopy prevDay = bhavcopyService.getBhavcopyBySymbol(symbol);
-        if (prevDay == null) return;
 
-        // --- Volume baseline: weighted blend of previous day's avg and first few candles ---
-        BigDecimal prevDayAvg = bhavcopyService.getAvgVolumePer5Min(prevDay);
-        if (prevDayAvg == null || prevDayAvg.compareTo(BigDecimal.ZERO) <= 0) {
-            log.warn("Skipping {} due to invalid previous day volume", symbol);
-            return;
-        }
-
+        // --- Intraday Volume Baseline using first 3 candles only ---
         BigDecimal baselineAvg;
-        // FIX: Use first 3 candles as soon as we have at least 3 candles (was >=4)
+
         if (todaysCandles.size() >= 3) {
             List<CandleData> firstFew = todaysCandles.subList(0, 3);
-            BigDecimal first3Avg = firstFew.stream()
+            baselineAvg = firstFew.stream()
                     .map(c -> BigDecimal.valueOf(c.getVolume()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP);
-            // Weighted blend: 60% previous day, 40% first 3 candles
-            baselineAvg = prevDayAvg.multiply(new BigDecimal("0.6"))
-                            .add(first3Avg.multiply(new BigDecimal("0.4")))
-                            .setScale(2, RoundingMode.HALF_UP);
         } else {
-            baselineAvg = prevDayAvg;
+            // If less than 3 candles, use average of available candles
+            baselineAvg = todaysCandles.stream()
+                    .map(c -> BigDecimal.valueOf(c.getVolume()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .divide(BigDecimal.valueOf(todaysCandles.size()), 2, RoundingMode.HALF_UP);
         }
+
+        if (baselineAvg.compareTo(BigDecimal.ZERO) <= 0) return;
 
         BigDecimal volumeRatio = BigDecimal.valueOf(latest.getVolume())
                 .divide(baselineAvg, 2, RoundingMode.HALF_UP);
+
         BigDecimal vwap = calculator.calculateVWAP(todaysCandles);
 
-        // --- Guard against invalid VWAP ---
-        if (vwap == null || vwap.compareTo(BigDecimal.ZERO) <= 0) {
-            log.debug("Skipping {} due to invalid VWAP", symbol);
-            return;
-        }
+        if (vwap == null || vwap.compareTo(BigDecimal.ZERO) <= 0) return;
 
         boolean priceAboveVWAP = latest.getClose().compareTo(vwap) > 0;
         boolean volumeSurge = volumeRatio.compareTo(EARLY_VOLUME_THRESHOLD) >= 0;
 
-        // Determine signal: WATCH if both conditions true; ENTRY_READY if also above previous close/high
-        boolean abovePrevClose = latest.getClose().compareTo(prevDay.getClsPric()) > 0;
-        boolean abovePrevHigh = latest.getClose().compareTo(prevDay.getHghPric()) > 0;
-
         String signal;
         if (priceAboveVWAP && volumeSurge) {
-            if (abovePrevClose || abovePrevHigh) {
-                signal = Constants.ENTRY_READY;   // stronger signal
-            } else {
-                signal = WATCH;                    // early watch
-            }
+            signal = Constants.ENTRY_READY;
+        } else if (priceAboveVWAP) {
+            signal = WATCH;
         } else {
             signal = Constants.WAIT;
         }
 
-        // Early scanner does not compute support levels, so atStrongSupport = false
         storeIndicators(
-                scripCode, symbol, todaysCandles.size(), Constants.EARLY,
-                latest.getClose(), vwap, volumeRatio,
+                scripCode,
+                symbol,
+                todaysCandles.size(),
+                Constants.EARLY,
+                latest.getClose(),
+                vwap,
+                volumeRatio,
                 null, null, null, null,
                 null, null,
-                signal, false,sector);
+                signal,
+                false,
+                sector
+        );
     }
-
     // -------------------- FULL SCANNER (with early momentum detection) --------------------
     private void evaluateAndStoreFull(Integer scripCode, String symbol, String sector , int candleCount) throws Exception {
         String json = apiClient.getHistoricalData(scripCode, Constants.INTERVAL, 60);
