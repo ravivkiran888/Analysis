@@ -150,14 +150,16 @@ public class MarketSnapshotJob {
     private boolean processBatch(List<ScripMaster> batch) {
         try {
             // Create batch requests using your DTO
-            List<MarketSnapshotRequest> requests = batch.stream()
-                .map(scrip -> new MarketSnapshotRequest(
-                    "N",
-                    "C",
-                    Integer.parseInt(scrip.getScripCode()),
-                    scrip.getSymbol()
-                ))
-                .collect(Collectors.toList());
+        	
+        	List<MarketSnapshotRequest> requests = batch.stream()
+        	        .map(scrip -> MarketSnapshotRequest.builder()
+        	                .exchange("N")
+        	                .exchangeType("C")
+        	                .scripCode(Long.valueOf(scrip.getScripCode()))
+        	                .symbol(scrip.getSymbol())
+        	                .build()
+        	        )
+        	        .toList();   
             
             // Fetch market snapshot
             MarketSnapshotResponse response = httpClient.fetchSnapshot(requests);
@@ -226,9 +228,17 @@ public class MarketSnapshotJob {
     
     private boolean processSingleScrip(ScripMaster scrip) {
         try {
-            MarketSnapshotRequest request = new MarketSnapshotRequest(
-                "N", "C", Integer.parseInt(scrip.getScripCode()), scrip.getSymbol()
-            );
+           
+        String scripCode = 	scrip.getScripCode();
+        String symbol = scrip.getSymbol();
+        	
+        	 MarketSnapshotRequest request =
+     	            MarketSnapshotRequest.builder()
+     	                    .exchange("N")
+     	                    .exchangeType("C")
+     	                    .scripCode(Long.valueOf(scripCode))
+     	                    .symbol(symbol)
+     	                    .build();
             
             MarketSnapshotResponse response = httpClient.fetchSnapshot(List.of(request));
             

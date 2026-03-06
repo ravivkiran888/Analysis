@@ -1,15 +1,19 @@
 package com.analysis.apicalls;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
 import com.analysis.constants.Constants;
-import com.analysis.service.AccessTokenService;
 import com.analysis.service.GrowAccessTokenService;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Component
@@ -30,51 +34,37 @@ public class OptionsAPIClient {
     /**
      * Fetches options chain for a given symbol with retry on rate limit (429).
      */
+    
+    @CircuitBreaker(name = "growwOptionChain", fallbackMethod = "getOptionsChainFallback")
     public String getOptionsChain(String symbol) {
-        int maxRetries = 3;
-        int retryCount = 0;
-        long baseWaitMs = 1000; // 1 second initial backoff
 
-        while (true) {
-            try {
-                // Acquire permit from rate limiter (blocks if needed)
-                Constants.RATE_LIMITER.acquire();
+        Constants.RATE_LIMITER.acquire();
 
-                String url = String.format(
-                        "https://api.groww.in/v1/option-chain/exchange/NSE/underlying/%s?expiry_date=%s",
-                        symbol, expiryDate
-                );
+        String url = String.format(
+                "https://api.groww.in/v1/option-chain/exchange/NSE/underlying/%s?expiry_date=%s",
+                symbol, expiryDate
+        );
 
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("Authorization", "Bearer " + accessTokenService.getGrowAccessToken());
-                headers.set("X-API-VERSION", "1.0");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Bearer " + accessTokenService.getGrowAccessToken());
+        headers.set("X-API-VERSION", "1.0");
 
-                HttpEntity<String> entity = new HttpEntity<>(headers);
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-                return response.getBody();
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-            } catch (HttpClientErrorException e) {
-                if (e.getStatusCode().value() == 429 && retryCount < maxRetries) {
-                    retryCount++;
-                    long waitTime = baseWaitMs * (1L << retryCount); // exponential: 2^retry * 1000 ms
-                    log.warn("Rate limited for {} (attempt {}/{}). Retrying in {} ms",
-                            symbol, retryCount, maxRetries, waitTime);
-                    try {
-                        Thread.sleep(waitTime);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Retry interrupted", ie);
-                    }
-                } else {
-                    log.error("Failed to fetch options chain for {}: {} - {}",
-                            symbol, e.getStatusCode(), e.getResponseBodyAsString());
-                    throw e;
-                }
-            } catch (Exception e) {
-                log.error("Unexpected error for {}: {}", symbol, e.getMessage());
-                throw e;
-            }
-        }
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, entity, String.class
+        );
+
+        return response.getBody();
     }
-}
+    
+    
+	public String getOptionsChainFallback(String symbol, Throwable ex) {
+
+	    log.error("Groww API failed for {}: {}", symbol, ex.getMessage());
+
+		return null;
+	}
+
+   }

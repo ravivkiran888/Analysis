@@ -59,7 +59,7 @@ public class SectorAPIClient {
     
     public String sectorFallback(String tradingSymbol, Throwable t) {
         log.error("Circuit breaker triggered for {} : {}", tradingSymbol, t.getMessage());
-
         return null;
     }
+    
 }
