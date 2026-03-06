@@ -34,7 +34,8 @@ public class SectorIndicatorService {
                 .map(s -> new SectorIndicatorDTO(
                         s.getName(),
                         s.getSector(),
-                        s.getDayChange().setScale(2, RoundingMode.HALF_UP)
+                        s.getDayChange().setScale(2, RoundingMode.HALF_UP),
+                        s.getTimestamp()
                 ))
                 .collect(Collectors.toList());
     }
