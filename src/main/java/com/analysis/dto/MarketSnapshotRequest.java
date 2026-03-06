@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.util.List;
-
+@Builder
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -25,14 +25,7 @@ public class MarketSnapshotRequest {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String symbol;
     
-    // Constructor for easier creation
-    public MarketSnapshotRequest(String exchange, String exchangeType, Integer scripCode, String symbol) {
-        this.exchange = exchange;
-        this.exchangeType = exchangeType;
-        this.scripCode = scripCode != null ? scripCode.longValue() : null;
-        this.symbol = symbol;
-    }
-
+ 
     // ========== NESTED CLASSES FOR API REQUEST ==========
     @Data
     @Builder

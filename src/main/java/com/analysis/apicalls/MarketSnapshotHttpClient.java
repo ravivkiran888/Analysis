@@ -114,7 +114,15 @@ public class MarketSnapshotHttpClient {
      * Fetch snapshot for a single scrip
      */
     public MarketSnapshotResponse fetchSingleSnapshot(Integer scripCode, String symbol) {
-        MarketSnapshotRequest request = new MarketSnapshotRequest("N", "C", scripCode, symbol);
+        
+    	 MarketSnapshotRequest request =
+    	            MarketSnapshotRequest.builder()
+    	                    .exchange("N")
+    	                    .exchangeType("C")
+    	                    .scripCode(scripCode != null ? scripCode.longValue() : null)
+    	                    .symbol(symbol)
+    	                    .build();
+        
         return fetchSnapshot(List.of(request));
     }
 
