@@ -4,8 +4,17 @@ import java.util.List;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.AddFieldsOperation;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationResults;
+import org.springframework.data.mongodb.core.aggregation.ArrayOperators;
+import org.springframework.data.mongodb.core.aggregation.ComparisonOperators;
+import org.springframework.data.mongodb.core.aggregation.ConditionalOperators;
+import org.springframework.data.mongodb.core.aggregation.LookupOperation;
+import org.springframework.data.mongodb.core.aggregation.MatchOperation;
+import org.springframework.data.mongodb.core.aggregation.ProjectionOperation;
+import org.springframework.data.mongodb.core.aggregation.SortOperation;
 import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
 import com.analysis.constants.Constants;
@@ -20,29 +29,50 @@ public class SignalService {
         this.mongoTemplate = mongoTemplate;
     }
 
-    /**
-     * Fetches symbols with ENTRY_READY or WATCH signals, sorted by volumeExpansion and totalDayVolume
-     */
+
     public List<SymbolIndicators> getEntryReadyOrWatchSymbols() {
 
-        // Create query to fetch SymbolIndicators with ENTRY_READY or WATCH signals
-        Query query = new Query(
-                Criteria.where(Constants.SIGNAL)
-                        .in(Constants.ENTRY_READY, Constants.WATCH)
-        );
+        MatchOperation match =
+                Aggregation.match(
+                        Criteria.where(Constants.SIGNAL)
+                                .in(Constants.ENTRY_READY, Constants.WATCH)
+                );
 
-        // Apply sorting
-        query.with(Sort.by(
-                Sort.Order.desc("totalDayVolume")
-        ));
+        SortOperation sort =
+                Aggregation.sort(Sort.by(Sort.Direction.DESC, "totalDayVolume"));
 
-        List<SymbolIndicators> indicators =
-                mongoTemplate.find(query, SymbolIndicators.class, Constants.SYMBOL_INDICATORS_COLLECTION);
+        LookupOperation lookup =
+                LookupOperation.newLookup()
+                        .from("optionChainIndicators")
+                        .localField("symbol")
+                        .foreignField("symbol")
+                        .as("optionData");
 
-  
-        return indicators;
+        AddFieldsOperation addFields =
+                AddFieldsOperation.addField("isOptionChain")
+                        .withValue(
+                                ConditionalOperators.when(
+                                        ComparisonOperators.Gt.valueOf(
+                                                ArrayOperators.Size.lengthOfArray("optionData")
+                                        ).greaterThanValue(0)
+                                ).then(true).otherwise(false)
+                        ).build();
+
+        ProjectionOperation project =
+                Aggregation.project().andExclude("optionData");
+
+        Aggregation aggregation =
+                Aggregation.newAggregation(match, sort, lookup, addFields, project);
+
+        AggregationResults<SymbolIndicators> results =
+                mongoTemplate.aggregate(
+                        aggregation,
+                        Constants.SYMBOL_INDICATORS_COLLECTION,
+                        SymbolIndicators.class
+                );
+
+        return results.getMappedResults();
     }
-
  
  
  

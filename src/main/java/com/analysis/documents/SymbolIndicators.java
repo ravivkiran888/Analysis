@@ -39,7 +39,7 @@ public class SymbolIndicators {
 
     // Signal: "ENTRY_READY" or "WAIT"
     private String signal;
-    
+    private Boolean isOptionChain;
     
     
     // Market snapshot fields

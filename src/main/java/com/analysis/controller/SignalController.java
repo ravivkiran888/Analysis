@@ -7,12 +7,15 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.analysis.constants.Constants;
 import com.analysis.documents.SymbolIndicators;
+import com.analysis.dto.OptionChainIndicators;
 import com.analysis.dto.SectorIndicatorDTO;
+import com.analysis.service.OptionChainIndicatorsService;
 import com.analysis.service.SectorIndicatorService;
 import com.analysis.service.SignalService;
 
@@ -30,6 +33,7 @@ public class SignalController {
 	// Constant
 	private final SectorIndicatorService sectorIndicatorService;
 	private final SignalService signalService;
+    private final OptionChainIndicatorsService service;
 
 
 	@GetMapping("/ready")
@@ -55,6 +59,14 @@ public class SignalController {
 		List<SectorIndicatorDTO> topSectors = sectorIndicatorService.getTopSectorsByDayChange();
 		return ResponseEntity.ok(topSectors);
 	}
+	
+	
+	
+	 @GetMapping("/{symbol}")
+	    public OptionChainIndicators getOptionMetrics(@PathVariable String symbol) {
+
+	        return service.getBySymbol(symbol);
+	    }
 
 	private List<SymbolIndicators> prioritize(List<SymbolIndicators> all) {
 		

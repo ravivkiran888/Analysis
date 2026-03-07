@@ -31,9 +31,6 @@ public class OptionsAPIClient {
         this.expiryDate = expiryDate;
     }
 
-    /**
-     * Fetches options chain for a given symbol with retry on rate limit (429).
-     */
     
     @CircuitBreaker(name = "growwOptionChain", fallbackMethod = "getOptionsChainFallback")
     public String getOptionsChain(String symbol) {
