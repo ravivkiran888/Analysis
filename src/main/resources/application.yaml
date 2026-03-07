@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: Analysis
+
+  task:
+    scheduling:
+      pool:
+        size: 1
+
+  data:
+    mongodb:
+      uri: mongodb+srv://root:HanishGowtham222$@awscluster1.d5xhu0u.mongodb.net/
+      database: mine
+      auto-index-creation: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /analysis
+
+
+
+logging:
+  level:
+    org.mongodb.driver: WARN
+    org.mongodb.driver.cluster: WARN
+    org.mongodb.driver.connection: WARN
+
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      cors:
+        allowed-origins: "*"
+        allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+        allowed-headers: "*"
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      growwApi:
+        slidingWindowSize: 50
+        minimumNumberOfCalls: 20
+        failureRateThreshold: 60
+        waitDurationInOpenState: 5m
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        
+        
+runindicatorscanner: false
+runindices: false
+runaccesskeyinsertor: false
+rungrowaccesskeyinsertor: false
+runoptionchainscanner: false
+expirydate: 2026-03-30

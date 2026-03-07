@@ -14,8 +14,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = Constants.ACCESS_TOKEN_COLLECTION)
-public class AccessTokenEntity {
+@Document(collection = Constants.GROW_ACCESS_TOKEN_COLLECTION)
+public class GrowAccessTokenEntity {
     @Id
     private String id;
     
@@ -24,7 +24,7 @@ public class AccessTokenEntity {
     private Date expiresAt;
     
     // This will create a constructor for non-final fields without @NonNull
-    public AccessTokenEntity(String accessToken, Date expiresAt) {
+    public GrowAccessTokenEntity(String accessToken, Date expiresAt) {
         this.accessToken = accessToken;
         this.expiresAt = expiresAt;
     }

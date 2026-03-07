@@ -4,15 +4,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import com.analysis.APPConstants;
+import com.analysis.constants.Constants;
 
 @Configuration
 public class WebClientConfig {
 
     @Bean
-    public WebClient fivePaisaWebClient() {
+    public WebClient webClient() {
         return WebClient.builder()
-                .baseUrl(APPConstants.BASE_URL)
+                .baseUrl(Constants.BASE_URL) // optional, can be set later
                 .build();
     }
 }

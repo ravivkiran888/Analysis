@@ -3,23 +3,21 @@ package com.analysis.controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+
+
 @RestController
 public class TestController {
 
-	 @GetMapping("/hello")
-	    public String hello() {
-	        return "Hello, Spring Boot!";
-	    }
 	
 	 @GetMapping("/sai")
 	    public String sai() {
 	        return "Hello, Sai!";
 	    }
 	 
-	 
-	 @GetMapping("/saibaba")
-	    public String saiNew() {
-	        return "Hello, New Baba!";
+	  @GetMapping("/status")
+	    public String status() {
+	        return "Service is UP";
 	    }
+
 	
 }
