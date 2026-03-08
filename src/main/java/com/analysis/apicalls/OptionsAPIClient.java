@@ -24,9 +24,9 @@ public class OptionsAPIClient {
     private final String expiryDate;
 
     public OptionsAPIClient(RestTemplate restTemplate,
-    		GrowAccessTokenService accessTokenService,
-                            @Value("${expirydate}") String expiryDate) {
-        this.restTemplate = restTemplate;
+            GrowAccessTokenService accessTokenService,
+            @Value("${EXPIRY_DATE:}") String expiryDate) {
+    	this.restTemplate = restTemplate;
         this.accessTokenService = accessTokenService;
         this.expiryDate = expiryDate;
     }

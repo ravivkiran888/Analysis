@@ -40,7 +40,7 @@ public class SignalController {
 	public List<SymbolIndicators> getEntryReadySymbols() {
 
 	    List<SymbolIndicators> allSymbols =
-	            signalService.getEntryReadyOrWatchSymbols();
+	            signalService.getEntryReadyOrWatchSymbols(Constants.ENTRY_READY);
 
 	    if (allSymbols == null || allSymbols.isEmpty()) {
 	        return Collections.emptyList();
@@ -53,6 +53,26 @@ public class SignalController {
 
 	    return prioritize(allSymbols);
 	}
+	
+	
+	@GetMapping("/fetchAll")
+	public List<SymbolIndicators> getAllSymbols() {
+
+	    List<SymbolIndicators> allSymbols =
+	            signalService.getEntryReadyOrWatchSymbols(null);
+
+	    if (allSymbols == null || allSymbols.isEmpty()) {
+	        return Collections.emptyList();
+	    }
+	    
+	   
+	    allSymbols = allSymbols.stream()
+	            .filter(s -> s.getTotalDayVolume() >= MIN_VOLUME_THRESHOLD)
+	            .collect(Collectors.toList());
+
+	    return allSymbols;
+	}
+
 	
 	@GetMapping("/sectors")
 	public ResponseEntity<List<SectorIndicatorDTO>> getTopSectors() {

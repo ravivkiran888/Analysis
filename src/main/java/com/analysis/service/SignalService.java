@@ -1,11 +1,13 @@
 package com.analysis.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AddFieldsOperation;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationOperation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.data.mongodb.core.aggregation.ArrayOperators;
 import org.springframework.data.mongodb.core.aggregation.ComparisonOperators;
@@ -29,14 +31,19 @@ public class SignalService {
         this.mongoTemplate = mongoTemplate;
     }
 
+    public List<SymbolIndicators> getEntryReadyOrWatchSymbols(String mode) {
 
-    public List<SymbolIndicators> getEntryReadyOrWatchSymbols() {
+        List<AggregationOperation> operations = new ArrayList<>();
 
-        MatchOperation match =
-                Aggregation.match(
-                        Criteria.where(Constants.SIGNAL)
-                                .in(Constants.ENTRY_READY, Constants.WATCH)
-                );
+        // Apply match only for specific modes
+        if (mode != null && Constants.ENTRY_READY.equalsIgnoreCase(mode)) {
+            MatchOperation match =
+                    Aggregation.match(
+                            Criteria.where(Constants.SIGNAL)
+                                    .in(Constants.ENTRY_READY, Constants.WATCH)
+                    );
+            operations.add(match);
+        }
 
         SortOperation sort =
                 Aggregation.sort(Sort.by(Sort.Direction.DESC, "totalDayVolume"));
@@ -61,8 +68,12 @@ public class SignalService {
         ProjectionOperation project =
                 Aggregation.project().andExclude("optionData");
 
-        Aggregation aggregation =
-                Aggregation.newAggregation(match, sort, lookup, addFields, project);
+        operations.add(sort);
+        operations.add(lookup);
+        operations.add(addFields);
+        operations.add(project);
+
+        Aggregation aggregation = Aggregation.newAggregation(operations);
 
         AggregationResults<SymbolIndicators> results =
                 mongoTemplate.aggregate(
@@ -73,7 +84,5 @@ public class SignalService {
 
         return results.getMappedResults();
     }
- 
- 
  
 }
