@@ -8,11 +8,12 @@ import java.time.format.DateTimeFormatter;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import com.analysis.constants.Constants;
 import com.analysis.service.AccessTokenService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 
 @Service
 public class APIClient {
@@ -28,13 +29,12 @@ public class APIClient {
     }
 
    
+    @CircuitBreaker(name = "historicalDataService", fallbackMethod = "historicalDataFallback")
     public String getHistoricalData(int scripCode, String interval, int candleCount) throws Exception {
-        // Apply rate limiter (from your constants)
+
         Constants.RATE_LIMITER.acquire();
 
-        // Calculate date range
-        LocalDate endDate = LocalDate.now(); // or last trading day; could be adjusted
-        // Estimate how many days of data to fetch
+        LocalDate endDate = LocalDate.now();
         int daysToFetch = estimateDaysNeeded(interval, candleCount);
         LocalDate startDate = endDate.minusDays(daysToFetch);
 
@@ -44,27 +44,24 @@ public class APIClient {
 
         String url = String.format("%s/V2/historical/N/C/%d/%s?from=%s&end=%s",
                 Constants.BASE_URL, scripCode, interval, from, end);
-        
-      
 
         String accessToken = accessTokenService.getAccessToken();
 
-        try {
-        	
-        	if(accessToken!=null)
-        	{
+        if(accessToken != null) {
             return fetchWithToken(url, accessToken);
-        	}
-        	else
-        	{
-        		return null;
-        	}
-        } catch (WebClientResponseException.Unauthorized e) {
-        	
-        	return null;
         }
-    }
 
+        return null;
+    }
+    
+	    public String historicalDataFallback(int scripCode,
+	            String interval,
+	            int candleCount,
+	            Throwable ex) {
+	
+	    	return null;
+	}
+    
     private String fetchWithToken(String url, String token) {
         return webClient.get()
                 .uri(url)
