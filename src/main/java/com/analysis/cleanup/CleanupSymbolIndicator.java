@@ -18,8 +18,7 @@ public class CleanupSymbolIndicator {
         this.mongoTemplate = mongoTemplate;
     }
 
-    // To run the job daily at 8:00 AM IST
-    @Scheduled(cron = "0 0 8 * * ?", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 9 ? * MON-FRI", zone = "Asia/Kolkata")
     public void deleteAllDocuments() {
 
         try {
