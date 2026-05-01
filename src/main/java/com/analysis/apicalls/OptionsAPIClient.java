@@ -22,16 +22,14 @@ public class OptionsAPIClient {
     private final RestTemplate restTemplate;
     private final GrowAccessTokenService accessTokenService;
     private final String expiryDate;
+   
+	public OptionsAPIClient(RestTemplate restTemplate, GrowAccessTokenService accessTokenService,
+			@Value("${EXPIRY_DATE:}") String expiryDate) {
+		this.restTemplate = restTemplate;
+		this.accessTokenService = accessTokenService;
+		this.expiryDate = expiryDate;
+	}
 
-    public OptionsAPIClient(RestTemplate restTemplate,
-            GrowAccessTokenService accessTokenService,
-            @Value("${EXPIRY_DATE:}") String expiryDate) {
-    	this.restTemplate = restTemplate;
-        this.accessTokenService = accessTokenService;
-        this.expiryDate = expiryDate;
-    }
-
-    
     @CircuitBreaker(name = "growwOptionChain", fallbackMethod = "getOptionsChainFallback")
     public String getOptionsChain(String symbol) {
 

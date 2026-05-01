@@ -54,3 +54,5 @@ runindices: false
 runaccesskeyinsertor: false
 rungrowaccesskeyinsertor: false
 runoptionchainscanner: false
+
+EXPIRY_DATE: 2026-05-26
