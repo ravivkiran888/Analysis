@@ -17,4 +17,9 @@ public class OptionChainQueryService {
     public List<Document> getAllOptionSymbols() {
         return mongoTemplate.findAll(Document.class, "option_chain");
     }
+    
+    
+    public List<Document> getAllAvgPriceSymbols() {
+        return mongoTemplate.findAll(Document.class, "symbol_indicators");
+    }
 }

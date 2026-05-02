@@ -1,5 +1,6 @@
 package com.analysis.controller;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -50,6 +51,33 @@ public class SignalController {
 	public ResponseEntity<List<SectorIndicatorDTO>> getTopSectors() {
 		List<SectorIndicatorDTO> topSectors = sectorIndicatorService.getTopSectorsByDayChange();
 		return ResponseEntity.ok(topSectors);
+	}
+	
+	
+
+	@GetMapping("avgPrice")
+	public List<SymbolIndicators> getAllAvgPrice() {
+
+	    List<SymbolIndicators> allSymbols =
+	            signalService.getEntryReadyOrWatchSymbols(null);
+
+	    List<SymbolIndicators> filtered = allSymbols.stream()
+	            .filter(e -> {
+	 
+	            	BigDecimal avg = e.getAvgPrice();
+	                
+	            	BigDecimal ltp = e.getLastTradedPrice();
+
+	                if (avg == null || ltp == null) return false;
+
+	                BigDecimal diff = ltp.subtract(avg);
+
+	                return diff.compareTo(BigDecimal.valueOf(0.5)) >= 0 &&
+	                       diff.compareTo(BigDecimal.valueOf(2)) <= 0;
+	            })
+	            .collect(Collectors.toList());
+
+	    return filtered;
 	}
 
 	@GetMapping("/options")

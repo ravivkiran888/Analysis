@@ -63,7 +63,7 @@ public class MarketSnapshotResponse {
         private String aLow;
         
         @JsonProperty("AverageTradePrice")
-        private Double averageTradePrice;
+        private String averageTradePrice;
         
         @JsonProperty("BuyQuantity")
         private Integer buyQuantity;

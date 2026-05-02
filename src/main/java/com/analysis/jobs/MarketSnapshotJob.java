@@ -268,6 +268,7 @@ public class MarketSnapshotJob {
                     .set("dayHigh", parseBigDecimal(data.getHigh()))
                     .set("dayLow", parseBigDecimal(data.getLow()))
                     .set("dayOpen", parseBigDecimal(data.getOpen()))
+                    .set("avgPrice", parseBigDecimal(data.getAverageTradePrice()))
                     .set("lastTradedPrice", parseBigDecimal(data.getLastTradedPrice()))
                     .set("dayChange", parseBigDecimal(data.getNetChange()))
                     .set(Constants.TOTAL_DAY_VOLUME, parseLong(data.getVolume()))
