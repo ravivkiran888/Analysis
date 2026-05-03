@@ -92,35 +92,40 @@ public class SignalService {
 
         Aggregation aggregation = Aggregation.newAggregation(
 
-            // Convert fields
+            // 🔹 Convert fields
             Aggregation.addFields()
                 .addFieldWithValue("ltp", ConvertOperators.ToDouble.toDouble("$lastTradedPrice"))
                 .addFieldWithValue("prevLowD", ConvertOperators.ToDouble.toDouble("$prevLow"))
                 .addFieldWithValue("prevHighD", ConvertOperators.ToDouble.toDouble("$prevHigh"))
+                .addFieldWithValue("openD", ConvertOperators.ToDouble.toDouble("$dayOpen"))  // ✅ FIXED
+                .addFieldWithValue("lowD", ConvertOperators.ToDouble.toDouble("$dayLow"))    // ✅ FIXED
                 .build(),
 
-            // Match conditions
+            // 🔹 Match
             context -> new Document("$match",
                 new Document("$expr",
                     new Document("$or", List.of(
 
-                        // ✅ Near Support (±1%)
+                        // ✅ Support Bounce
                         new Document("$and", List.of(
+
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevLowD", 0.99))
                             )),
                             new Document("$lte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevLowD", 1.01))
-                            ))
+                            )),
+
+                            // ✅ Correct comparison
+                            new Document("$gt", List.of("$ltp", "$openD"))
+
                         )),
 
-                        // 🚀 Break Resistance (within range)
+                        // 🚀 Breakout (range)
                         new Document("$and", List.of(
-                            // slightly above resistance
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevHighD", 1.001))
                             )),
-                            // not more than 1% above
                             new Document("$lte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevHighD", 1.01))
                             ))
@@ -130,12 +135,12 @@ public class SignalService {
                 )
             ),
 
-            // Category tagging
+            // 🔹 Category
             Aggregation.addFields()
                 .addFieldWithValue("category",
                     new Document("$cond", List.of(
 
-                        // if breakout range → BREAK_RESISTANCE
+                        // BREAKOUT
                         new Document("$and", List.of(
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevHighD", 1.001))
@@ -146,21 +151,43 @@ public class SignalService {
                         )),
 
                         "BREAK_RESISTANCE",
-                        "NEAR_SUPPORT"
+
+                        // SUPPORT
+                        new Document("$cond", List.of(
+                            new Document("$and", List.of(
+                                new Document("$gte", List.of("$ltp",
+                                    new Document("$multiply", List.of("$prevLowD", 0.99))
+                                )),
+                                new Document("$lte", List.of("$ltp",
+                                    new Document("$multiply", List.of("$prevLowD", 1.01))
+                                )),
+                                new Document("$gt", List.of("$ltp", "$openD"))
+                            )),
+                            "SUPPORT_BOUNCE",
+                            "NEAR_SUPPORT"
+                        ))
                     ))
                 )
                 .build(),
 
-            // Projection
-            Aggregation.project("symbol", "lastTradedPrice", "prevLowD", "prevHighD",
-                                 "category", "totalDayVolume", "sector", "timestamp"),
+            // 🔹 Projection
+            Aggregation.project(
+                    "symbol",
+                    "lastTradedPrice",
+                    "prevLowD",
+                    "prevHighD",
+                    "dayOpen",   // for UI
+                    "dayLow",    // for UI
+                    "category",
+                    "totalDayVolume",
+                    "sector",
+                    "timestamp"
+            ),
 
-            // Sort by volume DESC
             Aggregation.sort(Sort.by(Sort.Direction.DESC, "totalDayVolume"))
         );
 
         return mongoTemplate.aggregate(aggregation, "symbol_indicators", Document.class)
                             .getMappedResults();
     }
- 
 }
