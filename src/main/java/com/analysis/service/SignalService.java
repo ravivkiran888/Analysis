@@ -92,7 +92,7 @@ public class SignalService {
 
         Aggregation aggregation = Aggregation.newAggregation(
 
-            // Convert fields (use lastTradedPrice directly)
+            // Convert fields
             Aggregation.addFields()
                 .addFieldWithValue("ltp", ConvertOperators.ToDouble.toDouble("$lastTradedPrice"))
                 .addFieldWithValue("prevLowD", ConvertOperators.ToDouble.toDouble("$prevLow"))
@@ -104,7 +104,7 @@ public class SignalService {
                 new Document("$expr",
                     new Document("$or", List.of(
 
-                        // Near Support (±1%)
+                        // ✅ Near Support (±1%)
                         new Document("$and", List.of(
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevLowD", 0.99))
@@ -114,25 +114,44 @@ public class SignalService {
                             ))
                         )),
 
-                        // Break Resistance
-                        new Document("$gt", List.of("$ltp", "$prevHighD"))
+                        // 🚀 Break Resistance (within range)
+                        new Document("$and", List.of(
+                            // slightly above resistance
+                            new Document("$gte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevHighD", 1.001))
+                            )),
+                            // not more than 1% above
+                            new Document("$lte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevHighD", 1.01))
+                            ))
+                        ))
 
                     ))
                 )
             ),
 
-            // Category
+            // Category tagging
             Aggregation.addFields()
                 .addFieldWithValue("category",
                     new Document("$cond", List.of(
-                        new Document("$gt", List.of("$ltp", "$prevHighD")),
+
+                        // if breakout range → BREAK_RESISTANCE
+                        new Document("$and", List.of(
+                            new Document("$gte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevHighD", 1.001))
+                            )),
+                            new Document("$lte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevHighD", 1.01))
+                            ))
+                        )),
+
                         "BREAK_RESISTANCE",
                         "NEAR_SUPPORT"
                     ))
                 )
                 .build(),
 
-            // Projection (use lastTradedPrice instead of price)
+            // Projection
             Aggregation.project("symbol", "lastTradedPrice", "prevLowD", "prevHighD",
                                  "category", "totalDayVolume", "sector", "timestamp"),
 
