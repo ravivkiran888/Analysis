@@ -87,7 +87,6 @@ public class SignalService {
         return results.getMappedResults();
     }
     
-    
     public List<Document> getSupportAndBreakoutStocks() {
 
         Aggregation aggregation = Aggregation.newAggregation(
@@ -97,31 +96,28 @@ public class SignalService {
                 .addFieldWithValue("ltp", ConvertOperators.ToDouble.toDouble("$lastTradedPrice"))
                 .addFieldWithValue("prevLowD", ConvertOperators.ToDouble.toDouble("$prevLow"))
                 .addFieldWithValue("prevHighD", ConvertOperators.ToDouble.toDouble("$prevHigh"))
-                .addFieldWithValue("openD", ConvertOperators.ToDouble.toDouble("$dayOpen"))  // ✅ FIXED
-                .addFieldWithValue("lowD", ConvertOperators.ToDouble.toDouble("$dayLow"))    // ✅ FIXED
+                .addFieldWithValue("openD", ConvertOperators.ToDouble.toDouble("$dayOpen"))
+                .addFieldWithValue("lowD", ConvertOperators.ToDouble.toDouble("$dayLow"))
+                .addFieldWithValue("ema20D", ConvertOperators.ToDouble.toDouble("$ema20")) // ✅ still used for trend
                 .build(),
 
-            // 🔹 Match
+            // 🔹 Match (NO EMA FILTER)
             context -> new Document("$match",
                 new Document("$expr",
                     new Document("$or", List.of(
 
                         // ✅ Support Bounce
                         new Document("$and", List.of(
-
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevLowD", 0.99))
                             )),
                             new Document("$lte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevLowD", 1.01))
                             )),
-
-                            // ✅ Correct comparison
                             new Document("$gt", List.of("$ltp", "$openD"))
-
                         )),
 
-                        // 🚀 Breakout (range)
+                        // 🚀 Breakout
                         new Document("$and", List.of(
                             new Document("$gte", List.of("$ltp",
                                 new Document("$multiply", List.of("$prevHighD", 1.001))
@@ -135,7 +131,7 @@ public class SignalService {
                 )
             ),
 
-            // 🔹 Category
+            // 🔹 Category + Trend (trend is informational only)
             Aggregation.addFields()
                 .addFieldWithValue("category",
                     new Document("$cond", List.of(
@@ -168,6 +164,15 @@ public class SignalService {
                         ))
                     ))
                 )
+
+                // ✅ Keep trend (but NOT filtering)
+                .addFieldWithValue("trend",
+                    new Document("$cond", List.of(
+                        new Document("$gt", List.of("$ltp", "$ema20D")),
+                        "BULLISH",
+                        "BEARISH"
+                    ))
+                )
                 .build(),
 
             // 🔹 Projection
@@ -176,18 +181,22 @@ public class SignalService {
                     "lastTradedPrice",
                     "prevLowD",
                     "prevHighD",
-                    "dayOpen",   // for UI
-                    "dayLow",    // for UI
+                    "dayOpen",
+                    "dayLow",
+                    "ema20",     // for UI
+                    "trend",     // for UI
                     "category",
                     "totalDayVolume",
                     "sector",
                     "timestamp"
             ),
 
+            // 🔹 Sort by volume
             Aggregation.sort(Sort.by(Sort.Direction.DESC, "totalDayVolume"))
         );
 
         return mongoTemplate.aggregate(aggregation, "symbol_indicators", Document.class)
                             .getMappedResults();
     }
-}
+    
+    }
