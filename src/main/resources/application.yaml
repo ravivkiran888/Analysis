@@ -51,8 +51,12 @@ resilience4j:
         
 runindicatorscanner: false
 runindices: false
-runaccesskeyinsertor: false
-rungrowaccesskeyinsertor: false
+
 runoptionchainscanner: false
+runhistoricaldatascanner: false
+
 
 EXPIRY_DATE: 2026-05-26
+
+runaccesskeyinsertor: false
+rungrowaccesskeyinsertor: false

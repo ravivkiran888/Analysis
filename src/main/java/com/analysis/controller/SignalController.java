@@ -54,6 +54,8 @@ public class SignalController {
 	}
 	
 	
+	
+	
 
 	@GetMapping("avgPrice")
 	public List<SymbolIndicators> getAllAvgPrice() {
@@ -79,6 +81,16 @@ public class SignalController {
 
 	    return filtered;
 	}
+	
+	
+	
+	
+	@GetMapping("/support-breakout")
+    public List<Document> getSupportAndBreakoutStocks() {
+        return signalService.getSupportAndBreakoutStocks();
+    }
+	
+	
 
 	@GetMapping("/options")
 	public List<Document> getAllOptionChains() {

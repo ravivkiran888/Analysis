@@ -3,6 +3,7 @@ package com.analysis.service;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.bson.Document;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.AddFieldsOperation;
@@ -12,6 +13,7 @@ import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.data.mongodb.core.aggregation.ArrayOperators;
 import org.springframework.data.mongodb.core.aggregation.ComparisonOperators;
 import org.springframework.data.mongodb.core.aggregation.ConditionalOperators;
+import org.springframework.data.mongodb.core.aggregation.ConvertOperators;
 import org.springframework.data.mongodb.core.aggregation.LookupOperation;
 import org.springframework.data.mongodb.core.aggregation.MatchOperation;
 import org.springframework.data.mongodb.core.aggregation.ProjectionOperation;
@@ -83,6 +85,63 @@ public class SignalService {
                 );
 
         return results.getMappedResults();
+    }
+    
+    
+    public List<Document> getSupportAndBreakoutStocks() {
+
+        Aggregation aggregation = Aggregation.newAggregation(
+
+            // Convert fields (use lastTradedPrice directly)
+            Aggregation.addFields()
+                .addFieldWithValue("ltp", ConvertOperators.ToDouble.toDouble("$lastTradedPrice"))
+                .addFieldWithValue("prevLowD", ConvertOperators.ToDouble.toDouble("$prevLow"))
+                .addFieldWithValue("prevHighD", ConvertOperators.ToDouble.toDouble("$prevHigh"))
+                .build(),
+
+            // Match conditions
+            context -> new Document("$match",
+                new Document("$expr",
+                    new Document("$or", List.of(
+
+                        // Near Support (±1%)
+                        new Document("$and", List.of(
+                            new Document("$gte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevLowD", 0.99))
+                            )),
+                            new Document("$lte", List.of("$ltp",
+                                new Document("$multiply", List.of("$prevLowD", 1.01))
+                            ))
+                        )),
+
+                        // Break Resistance
+                        new Document("$gt", List.of("$ltp", "$prevHighD"))
+
+                    ))
+                )
+            ),
+
+            // Category
+            Aggregation.addFields()
+                .addFieldWithValue("category",
+                    new Document("$cond", List.of(
+                        new Document("$gt", List.of("$ltp", "$prevHighD")),
+                        "BREAK_RESISTANCE",
+                        "NEAR_SUPPORT"
+                    ))
+                )
+                .build(),
+
+            // Projection (use lastTradedPrice instead of price)
+            Aggregation.project("symbol", "lastTradedPrice", "prevLowD", "prevHighD",
+                                 "category", "totalDayVolume", "sector", "timestamp"),
+
+            // Sort by volume DESC
+            Aggregation.sort(Sort.by(Sort.Direction.DESC, "totalDayVolume"))
+        );
+
+        return mongoTemplate.aggregate(aggregation, "symbol_indicators", Document.class)
+                            .getMappedResults();
     }
  
 }
