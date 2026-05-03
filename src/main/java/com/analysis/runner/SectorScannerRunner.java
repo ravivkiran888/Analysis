@@ -29,10 +29,7 @@ public class SectorScannerRunner implements CommandLineRunner {
 			
 			System.out.println("Sector Scan Completed.");
 		}
-		else
-		{
-			System.out.println("Sector Scannar disabled");
-		}
+		
 	
 		
 	}
