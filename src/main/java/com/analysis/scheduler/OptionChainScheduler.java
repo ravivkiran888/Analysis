@@ -25,10 +25,10 @@ public class OptionChainScheduler {
 
     @Scheduled(cron = "0 */5 9-15 * * MON-FRI", zone = "Asia/Kolkata")
     @Scheduled(cron = "0 30 15 * * MON-FRI", zone = "Asia/Kolkata")
-    public void executeMarketScan() {
+    public void executeOptionChainScan() {
         
         LocalTime startTime = LocalTime.now(IST_ZONE);
-        log.info("🚀 Starting market scan at {}", startTime);
+        log.info("🚀 Starting Option Chain scan at {}", startTime);
 
      
         try {
