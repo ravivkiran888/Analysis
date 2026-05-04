@@ -22,7 +22,6 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.analysis.apicalls.OptionsAPIClient;
@@ -65,7 +64,7 @@ public class OptionsLevelScanner {
 		log.info("Initialized OptionsLevelScanner with thread pool of {} threads", THREAD_POOL_SIZE);
 	}
 
-	@Scheduled(cron = "0 */5 9-15 * * MON-FRI", zone = "Asia/Kolkata")
+
 	public void scan() {
 		LocalTime now = LocalTime.now(IST_ZONE);
 		if (!isScanning.compareAndSet(false, true)) {
