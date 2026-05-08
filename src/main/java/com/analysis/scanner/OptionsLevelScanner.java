@@ -1,17 +1,13 @@
 package com.analysis.scanner;
 
-
-
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -38,324 +34,320 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class OptionsLevelScanner {
 
-	// ===================== CONSTANTS =====================
-	private static final int THREAD_POOL_SIZE = 8;
-	private static final int SCAN_TIMEOUT_MINUTES = 4;
-	private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final int THREAD_POOL_SIZE = 8;
 
-	private final OptionsAPIClient optionsApiClient;
-	private final MongoTemplate mongoTemplate;
-	private final ObjectMapper objectMapper;
-	private final OptionSymbolRepository optionSymbolRepository;
-	private final ExecutorService executor;
-	private final AtomicBoolean isScanning = new AtomicBoolean(false);
-	private volatile LocalTime lastScanStartTime = null;
-	
-	@Value("${EXPIRY_DATE:}")
-	String expiryDate;
+    private static final int SCAN_TIMEOUT_MINUTES = 4;
 
-	public OptionsLevelScanner(MongoTemplate mongoTemplate, OptionsAPIClient optionsApiClient,
-			OptionSymbolRepository optionSymbolRepository) {
-		this.mongoTemplate = mongoTemplate;
-		this.optionsApiClient = optionsApiClient;
-		this.objectMapper = new ObjectMapper();
-		this.optionSymbolRepository = optionSymbolRepository;
-		this.executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
-		log.info("Initialized OptionsLevelScanner with thread pool of {} threads", THREAD_POOL_SIZE);
-	}
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
+    private final OptionsAPIClient optionsApiClient;
+    private final MongoTemplate mongoTemplate;
+    private final ObjectMapper objectMapper;
+    private final OptionSymbolRepository optionSymbolRepository;
 
-	public void scan() {
-		LocalTime now = LocalTime.now(IST_ZONE);
-		if (!isScanning.compareAndSet(false, true)) {
-			log.warn("⚠️ Previous options scan still running at {}, skipping this execution", now);
-			return;
-		}
-		lastScanStartTime = now;
-		try {
-			executeScan(now);
-		} catch (Exception e) {
-			log.error("Fatal error during options level scan", e);
-		} finally {
-			isScanning.set(false);
-			log.info("Options level scan lock released at {}", LocalTime.now(IST_ZONE));
-		}
-	}
+    private final ExecutorService executor;
 
-	private void executeScan(LocalTime startTime) {
-		log.info("🔍 Starting options level scan at {} IST", startTime);
-		List<OptionSymbol> allOptionSymbols = optionSymbolRepository.findAll();
+    private final AtomicBoolean isScanning = new AtomicBoolean(false);
 
-		List<String> symbols = allOptionSymbols.stream().map(OptionSymbol::getSymbol).collect(Collectors.toList());
-		
-	
+    @Value("${EXPIRY_DATE:}")
+    private String expiryDate;
 
-		CountDownLatch latch = new CountDownLatch(symbols.size());
-		AtomicInteger processed = new AtomicInteger(0);
-		AtomicInteger successful = new AtomicInteger(0);
-		AtomicInteger failed = new AtomicInteger(0);
+    public OptionsLevelScanner(
+            MongoTemplate mongoTemplate,
+            OptionsAPIClient optionsApiClient,
+            OptionSymbolRepository optionSymbolRepository) {
 
-		for (String symbol : symbols) {
-			if (shouldAbortScan(startTime)) {
-				log.warn("⚠️ Aborting options scan at {} IST to prevent overlap", LocalTime.now(IST_ZONE));
-				break;
-			}
-			executor.submit(() -> {
-				try {
-					Constants.RATE_LIMITER.acquire();
-					processSymbol(symbol);
-					successful.incrementAndGet();
-				} catch (Exception e) {
-					failed.incrementAndGet();
-					log.error("Error processing {}: {}", symbol, e.getMessage());
-				} finally {
-					processed.incrementAndGet();
-					latch.countDown();
-				}
-			});
-		}
+        this.mongoTemplate = mongoTemplate;
+        this.optionsApiClient = optionsApiClient;
+        this.optionSymbolRepository = optionSymbolRepository;
 
-		try {
-			boolean completed = latch.await(SCAN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-			if (!completed) {
-				log.warn("⚠️ Options scan timed out after {} minutes. Completed: {}/{}", SCAN_TIMEOUT_MINUTES,
-						processed.get(), symbols.size());
-			} else {
-				log.info("✅ Options scan completed in {} ms at {} IST (Success: {}, Failed: {})",
-						System.currentTimeMillis() - startTime.toNanoOfDay() / 1_000_000, LocalTime.now(IST_ZONE),
-						successful.get(), failed.get());
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			log.error("Options scan was interrupted", e);
-		}
-	}
+        this.objectMapper = new ObjectMapper();
 
-	private boolean shouldAbortScan(LocalTime startTime) {
-		long elapsedSeconds = java.time.Duration.between(startTime, LocalTime.now(IST_ZONE)).getSeconds();
-		return elapsedSeconds > 240; // 4 minutes
-	}
+        this.executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 
-	// -------------------- PER‑SYMBOL PROCESSING --------------------
+        log.info("✅ OptionsLevelScanner initialized");
+    }
 
-	private void processSymbol(String symbol) {
+    public void scan() {
 
-	    try {
-	        String response = optionsApiClient.getOptionsChain(symbol);
+        LocalTime now = LocalTime.now(IST_ZONE);
 
-	        if (response == null || response.isBlank()) {
-	            log.warn("Empty API response for {}", symbol);
-	            return;
-	        }
+        // Prevent overlapping execution
+        if (!isScanning.compareAndSet(false, true)) {
+            log.warn("⚠️ Previous scan still running. Skipping current execution.");
+            return;
+        }
 
-	        JsonNode root = objectMapper.readTree(response);
+        long startMillis = System.currentTimeMillis();
 
-	        if (!root.has("payload")) {
-	            throw new IllegalStateException("Missing payload");
-	        }
+        try {
 
-	        JsonNode payload = root.get("payload");
+            log.info("🔍 Scan started at {}", now);
 
-	        if (!payload.has("underlying_ltp") || !payload.has("strikes")) {
-	            throw new IllegalStateException("Invalid payload structure");
-	        }
+            List<OptionSymbol> symbolsList = optionSymbolRepository.findAll();
 
-	        double ltp = payload.get("underlying_ltp").asDouble();
-	        JsonNode strikes = payload.get("strikes");
+            List<String> symbols = symbolsList.stream()
+                    .map(OptionSymbol::getSymbol)
+                    .collect(Collectors.toList());
 
-	        double atmStrike = findATMStrike(strikes, ltp);
+            if (symbols.isEmpty()) {
+                log.warn("⚠️ No symbols found");
+                return;
+            }
 
-	        JsonNode atmNode = strikes.get(String.valueOf(atmStrike));
-	        if (atmNode == null) {
-	            atmNode = strikes.get(String.valueOf((int) atmStrike));
-	        }
+            CountDownLatch latch = new CountDownLatch(symbols.size());
 
-	        if (atmNode == null) {
-	            throw new IllegalStateException("ATM strike not found");
-	        }
+            AtomicInteger success = new AtomicInteger();
+            AtomicInteger failed = new AtomicInteger();
 
-	        JsonNode ce = atmNode.get("CE");
-	        JsonNode pe = atmNode.get("PE");
+            for (String symbol : symbols) {
 
-	        if (ce == null || pe == null) {
-	            throw new IllegalStateException("CE/PE missing");
-	        }
+                executor.submit(() -> {
 
-	        // ✅ Current values
-	        double ceOi = ce.path("open_interest").asDouble(0);
-	        double peOi = pe.path("open_interest").asDouble(0);
+                    try {
 
-	        double ceVol = ce.path("volume").asDouble(0);
-	        double peVol = pe.path("volume").asDouble(0);
+                        // Rate limiting
+                        Constants.RATE_LIMITER.acquire();
 
-	        double ceIv = ce.path("greeks").path("iv").asDouble(0);
-	        double peIv = pe.path("greeks").path("iv").asDouble(0);
+                        processSymbol(symbol);
 
-	        // ✅ Fetch previous from SAME collection
-	        Query query = new Query(Criteria.where("symbol").is(symbol)
-	                .and("expiry").is(expiryDate));
+                        success.incrementAndGet();
 
-	        Document prev = mongoTemplate.findOne(query, Document.class, "option_chain");
+                    } catch (Exception e) {
 
-	        double prevCeOi = 0, prevPeOi = 0, prevLtp = 0, prevCeIv = 0;
+                        failed.incrementAndGet();
 
-	        if (prev != null) {
-	            prevLtp = getDouble(prev, "ltp");
+                        log.error("❌ Error processing {} : {}", symbol, e.getMessage(), e);
 
-	            Document ceDoc = (Document) prev.get("ce");
-	            Document peDoc = (Document) prev.get("pe");
+                    } finally {
 
-	            if (ceDoc != null) {
-	                prevCeOi = getDouble(ceDoc, "oi");
-	                prevCeIv = getDouble(ceDoc, "iv");
-	            }
+                        latch.countDown();
+                    }
+                });
+            }
 
-	            if (peDoc != null) {
-	                prevPeOi = getDouble(peDoc, "oi");
-	            }
-	        }
+            boolean completed = latch.await(
+                    SCAN_TIMEOUT_MINUTES,
+                    TimeUnit.MINUTES);
 
-	        // ✅ Delta Calculations
-	        double ceOiChange = ceOi - prevCeOi;
-	        double peOiChange = peOi - prevPeOi;
+            long totalTime = System.currentTimeMillis() - startMillis;
 
-	        // ✅ OI Build-up
-	        String oiBuildUp;
-	        if (peOiChange > 0 && ltp > prevLtp) oiBuildUp = "PUT_WRITING";
-	        else if (ceOiChange > 0 && ltp < prevLtp) oiBuildUp = "CALL_WRITING";
-	        else if (ceOiChange > 0 && ltp > prevLtp) oiBuildUp = "LONG_BUILDUP";
-	        else if (peOiChange > 0 && ltp < prevLtp) oiBuildUp = "SHORT_BUILDUP";
-	        else oiBuildUp = "NEUTRAL";
+            if (!completed) {
 
-	        // ✅ Volume Spike
-	        String volumeSpike;
-	        if (peVol > ceVol * 1.5) volumeSpike = "PE";
-	        else if (ceVol > peVol * 1.5) volumeSpike = "CE";
-	        else volumeSpike = "BALANCED";
+                log.warn(
+                        "⚠️ Scan timed out after {} minutes",
+                        SCAN_TIMEOUT_MINUTES);
 
-	        // ✅ IV Trend
-	        String ivTrend;
-	        if (ceIv > prevCeIv + 2) ivTrend = "RISING";
-	        else if (ceIv < prevCeIv - 2) ivTrend = "FALLING";
-	        else ivTrend = "STABLE";
+            } else {
 
-	        // ✅ PCR
-	        double pcr = (ceOi == 0) ? (peOi > 0 ? Double.MAX_VALUE : 0) : peOi / ceOi;
+                log.info(
+                        "✅ Scan completed in {} ms | Success={} Failed={}",
+                        totalTime,
+                        success.get(),
+                        failed.get());
+            }
 
-	        // ✅ Scoring Engine
-	        int score = 50;
+        } catch (Exception e) {
 
-	        if (pcr > 1.2) score += 15;
-	        else if (pcr < 0.8) score -= 15;
+            log.error("❌ Fatal scan error", e);
 
-	        if ("PUT_WRITING".equals(oiBuildUp)) score += 20;
-	        if ("CALL_WRITING".equals(oiBuildUp)) score -= 20;
+        } finally {
 
-	        if ("PE".equals(volumeSpike)) score += 10;
-	        if ("CE".equals(volumeSpike)) score -= 10;
+            isScanning.set(false);
 
-	        if ("RISING".equals(ivTrend)) score += 5;
+            log.info("🔓 Scan lock released");
+        }
+    }
 
-	        score = Math.max(0, Math.min(100, score));
+    private void processSymbol(String symbol) {
 
-	        // ✅ Final Decision
-	        String action;
-	        String bias;
+        try {
 
-	        if (score >= 70) {
-	            action = "BUY";
-	            bias = "BULLISH";
-	        } else if (score <= 30) {
-	            action = "SELL";
-	            bias = "BEARISH";
-	        } else if (score >= 45 && score <= 55) {
-	            action = "NO_TRADE";
-	            bias = "NEUTRAL";
-	        } else {
-	            action = "WAIT";
-	            bias = score > 50 ? "BULLISH" : "BEARISH";
-	        }
+            String response = optionsApiClient.getOptionsChain(symbol);
 
-	        // ✅ Update (INCLUDING previous values)
-	        Update update = new Update()
-	                .set("timestamp", Instant.now())
-	                .set("ltp", ltp)
-	                .set("prev_ltp", prevLtp)
-	                .set("atm_strike", atmStrike)
+            if (response == null || response.isBlank()) {
+                log.warn("⚠️ Empty response for {}", symbol);
+                return;
+            }
 
-	                .set("pcr", pcr)
-	                .set("confidence", score)
-	                .set("bias", bias)
-	                .set("action", action)
+            JsonNode root = objectMapper.readTree(response);
 
-	                // CE
-	                .set("ce.oi", ceOi)
-	                .set("ce.prev_oi", prevCeOi)
-	                .set("ce.volume", ceVol)
-	                .set("ce.iv", ceIv)
+            JsonNode payload = root.path("payload");
 
-	                // PE
-	                .set("pe.oi", peOi)
-	                .set("pe.prev_oi", prevPeOi)
-	                .set("pe.volume", peVol)
-	                .set("pe.iv", peIv)
+            if (payload.isMissingNode()) {
+                log.warn("⚠️ Missing payload for {}", symbol);
+                return;
+            }
 
-	                // Factors
-	                .set("factors.oi_build_up", oiBuildUp)
-	                .set("factors.volume_spike", volumeSpike)
-	                .set("factors.iv_trend", ivTrend)
+            double ltp = payload.path("underlying_ltp").asDouble();
 
-	                .setOnInsert("symbol", symbol)
-	                .setOnInsert("expiry", expiryDate);
+            JsonNode strikes = payload.path("strikes");
 
-	        mongoTemplate.upsert(query, update, "option_chain");
+            if (strikes.isMissingNode()) {
+                log.warn("⚠️ Missing strikes for {}", symbol);
+                return;
+            }
 
-	    } catch (Exception e) {
-	        log.error("Error processing {}", symbol, e);
-	    }
-	}
+            double atmStrike = findATMStrike(strikes, ltp);
 
+            JsonNode atmNode = strikes.get(String.valueOf((int) atmStrike));
 
-	 private double findATMStrike(JsonNode strikesNode, double ltp) {
-	        double closestStrike = 0;
-	        double minDiff = Double.MAX_VALUE;
+            if (atmNode == null) {
+                atmNode = strikes.get(String.valueOf(atmStrike));
+            }
 
-	        Iterator<Map.Entry<String, JsonNode>> fields = strikesNode.fields();
+            if (atmNode == null) {
+                log.warn("⚠️ ATM strike missing for {}", symbol);
+                return;
+            }
 
-	        while (fields.hasNext()) {
-	            Map.Entry<String, JsonNode> entry = fields.next();
-	            double strike = Double.parseDouble(entry.getKey());
+            JsonNode ce = atmNode.path("CE");
+            JsonNode pe = atmNode.path("PE");
 
-	            double diff = Math.abs(strike - ltp);
-	            if (diff < minDiff) {
-	                minDiff = diff;
-	                closestStrike = strike;
-	            }
-	        }
-	        return closestStrike;
-	    }
-	 
-	 private double getDouble(Document doc, String key) {
-		    Object val = doc.get(key);
-		    return val instanceof Number ? ((Number) val).doubleValue() : 0.0;
-		}
-	
-	// -------------------- CLEANUP --------------------
-	@PreDestroy
-	public void cleanup() {
-		log.info("Shutting down OptionsLevelScanner thread pool...");
-		executor.shutdown();
-		try {
-			if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-				executor.shutdownNow();
-				if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-					log.error("OptionsLevelScanner thread pool did not terminate");
-				}
-			}
-		} catch (InterruptedException e) {
-			executor.shutdownNow();
-			Thread.currentThread().interrupt();
-		}
-		log.info("OptionsLevelScanner thread pool shut down successfully");
-	}
+            double ceOi = ce.path("open_interest").asDouble(0);
+            double peOi = pe.path("open_interest").asDouble(0);
+
+            double ceVol = ce.path("volume").asDouble(0);
+            double peVol = pe.path("volume").asDouble(0);
+
+            double ceIv = ce.path("greeks").path("iv").asDouble(0);
+            double peIv = pe.path("greeks").path("iv").asDouble(0);
+
+            Query query = new Query(
+                    Criteria.where("symbol").is(symbol)
+                            .and("expiry").is(expiryDate));
+
+            Document prev = mongoTemplate.findOne(
+                    query,
+                    Document.class,
+                    "option_chain");
+
+            double prevCeOi = 0;
+            double prevPeOi = 0;
+            double prevLtp = 0;
+            double prevCeIv = 0;
+
+            if (prev != null) {
+
+                prevLtp = getDouble(prev, "ltp");
+
+                Document ceDoc = (Document) prev.get("ce");
+                Document peDoc = (Document) prev.get("pe");
+
+                if (ceDoc != null) {
+                    prevCeOi = getDouble(ceDoc, "oi");
+                    prevCeIv = getDouble(ceDoc, "iv");
+                }
+
+                if (peDoc != null) {
+                    prevPeOi = getDouble(peDoc, "oi");
+                }
+            }
+
+            double pcr = ceOi == 0 ? 0 : peOi / ceOi;
+
+            Update update = new Update()
+
+                    .set("timestamp", Instant.now())
+
+                    .set("symbol", symbol)
+
+                    .set("expiry", expiryDate)
+
+                    .set("ltp", ltp)
+
+                    .set("prev_ltp", prevLtp)
+
+                    .set("atm_strike", atmStrike)
+
+                    .set("pcr", pcr)
+
+                    .set("ce.oi", ceOi)
+
+                    .set("ce.prev_oi", prevCeOi)
+
+                    .set("ce.volume", ceVol)
+
+                    .set("ce.iv", ceIv)
+
+                    .set("pe.oi", peOi)
+
+                    .set("pe.prev_oi", prevPeOi)
+
+                    .set("pe.volume", peVol)
+
+                    .set("pe.iv", peIv);
+
+            mongoTemplate.upsert(
+                    query,
+                    update,
+                    "option_chain");
+
+            log.info("✅ Processed {}", symbol);
+
+        } catch (Exception e) {
+
+            log.error("❌ Failed processing {}", symbol, e);
+        }
+    }
+
+    private double findATMStrike(JsonNode strikesNode, double ltp) {
+
+        double closestStrike = 0;
+
+        double minDiff = Double.MAX_VALUE;
+
+        Iterator<Map.Entry<String, JsonNode>> fields = strikesNode.fields();
+
+        while (fields.hasNext()) {
+
+            Map.Entry<String, JsonNode> entry = fields.next();
+
+            double strike = Double.parseDouble(entry.getKey());
+
+            double diff = Math.abs(strike - ltp);
+
+            if (diff < minDiff) {
+
+                minDiff = diff;
+
+                closestStrike = strike;
+            }
+        }
+
+        return closestStrike;
+    }
+
+    private double getDouble(Document doc, String key) {
+
+        Object value = doc.get(key);
+
+        return value instanceof Number
+                ? ((Number) value).doubleValue()
+                : 0.0;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+
+        log.info("🛑 Shutting down executor");
+
+        executor.shutdown();
+
+        try {
+
+            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+
+                executor.shutdownNow();
+            }
+
+        } catch (InterruptedException e) {
+
+            executor.shutdownNow();
+
+            Thread.currentThread().interrupt();
+        }
+
+        log.info("✅ Executor shutdown completed");
+    }
 }

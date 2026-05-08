@@ -15,34 +15,48 @@ import lombok.extern.slf4j.Slf4j;
 public class OptionChainScheduler {
 
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
-    
+
+    // Market timings
+    private static final LocalTime MARKET_START = LocalTime.of(9, 15);
+    private static final LocalTime MARKET_END = LocalTime.of(15, 30);
+
     private final OptionsLevelScanner optionsLevelScanner;
-   
+
     public OptionChainScheduler(OptionsLevelScanner optionsLevelScanner) {
-       this.optionsLevelScanner = optionsLevelScanner;
+        this.optionsLevelScanner = optionsLevelScanner;
     }
 
-
+    /**
+     * Runs every 5 minutes Monday-Friday
+     */
     @Scheduled(cron = "0 */5 9-15 * * MON-FRI", zone = "Asia/Kolkata")
-    @Scheduled(cron = "0 30 15 * * MON-FRI", zone = "Asia/Kolkata")
     public void executeOptionChainScan() {
-        
-        LocalTime startTime = LocalTime.now(IST_ZONE);
-        log.info("🚀 Starting Option Chain scan at {}", startTime);
 
-     
+        LocalTime now = LocalTime.now(IST_ZONE);
+
+        log.info("⏰ Scheduler triggered at {}", now);
+
+        // Skip before market open
+        if (now.isBefore(MARKET_START)) {
+            log.info("⏳ Market not opened yet");
+            return;
+        }
+
+        // Skip after market close
+        if (now.isAfter(MARKET_END)) {
+            log.info("🛑 Market closed");
+            return;
+        }
+
         try {
-            // Run optionsLevelScanner
-            log.info("run optionsLevelScanner...");
+            log.info("🚀 Starting Option Chain Scan");
+
             optionsLevelScanner.scan();
-            
-            // Small delay between jobs
-            Thread.sleep(2000);
-            
-          
-            
+
+            log.info("✅ Option Chain Scan Completed");
+
         } catch (Exception e) {
-            log.error("❌ Market scan failed: {}", e.getMessage());
+            log.error("❌ Scheduler failed", e);
         }
     }
 }
