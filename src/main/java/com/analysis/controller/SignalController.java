@@ -1,6 +1,8 @@
 package com.analysis.controller;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +38,18 @@ public class SignalController {
 
 	@GetMapping("/ready")
 	public List<SymbolIndicators> getEntryReadySymbols() {
+		
+	     ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+
+	     LocalTime MARKET_OPEN = LocalTime.of(9, 35);
+
+	     LocalTime now = LocalTime.now(IST_ZONE);
+	     
+	     
+	     if (now.isBefore(MARKET_OPEN)) {
+	    	 return Collections.emptyList();
+	        }
+		
 
 		List<SymbolIndicators> allSymbols = signalService.getEntryReadyOrWatchSymbols(Constants.ENTRY_READY);
 		if (allSymbols == null || allSymbols.isEmpty()) {
