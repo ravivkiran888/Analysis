@@ -9,15 +9,22 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.bson.Document;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.analysis.constants.Constants;
 import com.analysis.documents.SymbolIndicators;
+import com.analysis.dto.PivotLevels;
 import com.analysis.dto.SectorIndicatorDTO;
 import com.analysis.service.OptionChainQueryService;
+import com.analysis.service.PivotCalculatorService;
 import com.analysis.service.SectorIndicatorService;
 import com.analysis.service.SignalService;
 
@@ -35,7 +42,9 @@ public class SignalController {
 	private final SectorIndicatorService sectorIndicatorService;
 	private final SignalService signalService;
 	private final OptionChainQueryService service;
-
+	private final PivotCalculatorService pivotCalculatorService;
+	private final MongoTemplate mongoTemplate;
+	
 	@GetMapping("/ready")
 	public List<SymbolIndicators> getEntryReadySymbols() {
 		
@@ -60,6 +69,53 @@ public class SignalController {
 		return prioritize(allSymbols);
 		
 	}
+	
+	
+	
+	
+	@GetMapping("/pivot/{symbol}")
+    public ResponseEntity<?> getPivotLevels(
+            @PathVariable String symbol
+    ) {
+
+        Query query = new Query();
+
+        query.addCriteria(
+                Criteria.where("symbol")
+                        .regex("^" + symbol + "$", "i")
+        );
+
+        Document document = mongoTemplate.findOne(
+                query,
+                Document.class,
+                "symbol_indicators"
+        );
+
+        if (document == null) {
+
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body("Symbol not found");
+        }
+
+        String prevHigh = document.getString("prevHigh");
+        String prevLow = document.getString("prevLow");
+        String prevClose = document.getString("prevClose");
+        String symbolDB = document.getString("symbol");
+
+        PivotLevels levels =
+                pivotCalculatorService.calculateLevels(
+                        prevHigh,
+                        prevLow,
+                        prevClose,
+                        symbolDB
+                );
+
+        return ResponseEntity.ok(levels);
+    }
+	
+	
+	
 
 	@GetMapping("/sectors")
 	public ResponseEntity<List<SectorIndicatorDTO>> getTopSectors() {
