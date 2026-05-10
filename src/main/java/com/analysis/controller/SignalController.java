@@ -48,17 +48,18 @@ public class SignalController {
 	@GetMapping("/ready")
 	public List<SymbolIndicators> getEntryReadySymbols() {
 		
-	     ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+		  ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
-	     LocalTime MARKET_OPEN = LocalTime.of(9, 35);
+		    LocalTime BLOCK_START = LocalTime.of(9, 0);
+		    LocalTime BLOCK_END = LocalTime.of(9, 35);
 
-	     LocalTime now = LocalTime.now(IST_ZONE);
-	     
-	     
-	     if (now.isBefore(MARKET_OPEN)) {
-	    	 return Collections.emptyList();
-	        }
-		
+		    LocalTime now = LocalTime.now(IST_ZONE);
+
+		    // Return empty list between 9:00 AM and 9:35 AM
+		    if (!now.isBefore(BLOCK_START) && now.isBefore(BLOCK_END)) {
+		        return Collections.emptyList();
+		    }
+
 
 		List<SymbolIndicators> allSymbols = signalService.getEntryReadyOrWatchSymbols(Constants.ENTRY_READY);
 		if (allSymbols == null || allSymbols.isEmpty()) {
